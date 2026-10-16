@@ -480,3 +480,22 @@ document.querySelectorAll('.acc').forEach(a=>{a.setAttribute('role','button');a.
  const t=()=>{const o=a.classList.toggle('open');a.setAttribute('aria-expanded',o)};
  a.addEventListener('click',e=>{if(e.target.closest('a'))return;t()});
  a.addEventListener('keydown',e=>{if(e.target!==a)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();t()}})});
+
+// ---- welcome pop-up: shown every time the page loads ----
+function showWelcome(){let saved=null;try{saved=JSON.parse(localStorage.getItem('jsn_acct')||'null')}catch(e){}
+ const step=(n,t,x)=>`<div style="display:flex;gap:10px;margin:10px 0"><b style="flex:0 0 26px;height:26px;border-radius:50%;background:var(--acc);color:#08180f;display:flex;align-items:center;justify-content:center">${n}</b><div><b>${t}</b><br><span class="mute">${x}</span></div></div>`;
+ showModal(`<h2 id="wtitle" style="margin-top:0">${saved?'Welcome back'+(saved.name?', '+esc(saved.name):'')+'!':'Welcome to JSN'}</h2>
+<p style="margin:0 0 4px">Together we keep the UK litter-free. Here’s how it works:</p>
+${step(1,'See rubbish? Take a picture','Can’t pick it up there and then? Snap a photo – the map reads the location from it.')}
+${step(2,'Report it','It appears on the map so anyone passing can clean it up.')}
+${step(3,'Clean it','Cleared a spot? Mark it cleaned with an “after” photo.')}
+${step(4,'Join a community clean','Meet people near you, or organise your own.')}
+<p style="margin:12px 0 0;text-align:center">Every donation helps keep this project running. <a href="https://gofund.me/15d8a7427" target="_blank" rel="noopener" style="color:var(--acc);font-weight:700">Donate on GoFundMe</a></p>
+${saved?`<button class="p" data-close style="width:100%">Let’s go</button>`:
+`<div style="background:var(--line);border-radius:10px;padding:12px;margin-top:12px"><b>Create your free account</b><br><span class="mute">No email or password – just pick a nickname. You need one to report, clean and join cleans.</span><button class="p" data-wa="create" style="width:100%">Create my account</button></div>
+<button class="s" data-close style="width:100%;margin-top:8px">Just look around first</button>`}`);
+ const m=$('modal'),b=m.querySelector('.box');b.setAttribute('aria-labelledby','wtitle');
+ const go=m.querySelector('[data-wa=create]');if(go)go.onclick=()=>{m.classList.add('hide');$('t6').click();setTimeout(()=>{const n=$('anick');if(n)n.focus()},50)};
+ (m.querySelector('[data-wa=create]')||m.querySelector('[data-close]')).focus()}
+document.addEventListener('keydown',e=>{const m=$('modal');if(e.key==='Escape'&&m&&!m.classList.contains('hide'))m.classList.add('hide')});
+showWelcome();
