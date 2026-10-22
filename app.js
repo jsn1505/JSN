@@ -218,13 +218,28 @@ let DETAILS={},EVPIN=null,PICKEV=false,detT=null;
 async function loadDetails(){try{if(!sb||!sbUser)return;const {data,error}=await sb.from('event_details').select('*');if(!error){DETAILS={};(data||[]).forEach(d=>DETAILS[d.ev]=d);drawEv()}}catch(e){}}
 const loadDetailsSoon=()=>{clearTimeout(detT);detT=setTimeout(loadDetails,400)};
 $('epick').onclick=()=>{PICKEV=true;$('t1').click();$('msg').textContent='Tap the map where everyone should meet.'};
-$('eadd').onclick=async()=>{const t=$('et').value.trim().slice(0,80),d=evWhen(),l=$('el').value.trim().slice(0,80),ds=$('edesc').value.trim().slice(0,300),ex=$('eexact').value.trim().slice(0,150),ct=$('econtact').value.trim().slice(0,100);
- if(!acct)return $('emsg').textContent='Create or sign in to a My stats account to organise a clean.';
- if(!t||!d||!l||!ex)return $('emsg').textContent='Fill in the title, area and exact meeting point, and check the date is real (e.g. not 31 June).';if(d<Date.now())return $('emsg').textContent='Pick a date in the future.';
- if(!cool('event',60,$('emsg')))return;
+// cooldowns only count once something has actually been saved
+const uncool=k=>{try{const T=JSON.parse(localStorage.getItem('jsn_cool')||'{}');delete T[k];localStorage.setItem('jsn_cool',JSON.stringify(T))}catch(e){}};
+$('eadd').onclick=async()=>{const m=$('emsg'),say=x=>{m.textContent=x;m.scrollIntoView({block:'nearest',behavior:'smooth'})};
+ const t=$('et').value.trim().slice(0,80),d=evWhen(),l=$('el').value.trim().slice(0,80),ds=$('edesc').value.trim().slice(0,300),ex=$('eexact').value.trim().slice(0,150),ct=$('econtact').value.trim().slice(0,100);
+ if(!acct)return say('Create or sign in to a My stats account to organise a clean.');
+ const miss=[!t&&'a title',!l&&'the area',!ex&&'the exact meeting point'].filter(Boolean);
+ if(miss.length)return say('Please add '+miss.join(', ').replace(/, ([^,]*)$/,' and $1')+'.');
+ if(!d)return say('That date doesn’t exist (e.g. 31 June) – please check the day and month.');if(d<Date.now())return say('Pick a date and time in the future.');
+ if(!cool('event',60,m))return;
+ const btn=$('eadd');btn.disabled=true;say('Creating your clean…');
  const ev={id:Date.now()+'_'+localId,title:t,loc:l,descr:ds,when:d,rsvp:[myId()],by:myId()},det={ev:ev.id,exact:ex,contact:ct,lat:EVPIN?EVPIN.lat:null,lon:EVPIN?EVPIN.lon:null};
- try{if(db){await db.doc('events/'+ev.id).set({...ev,rsvp:[]});const {error:de}=await sb.from('event_details').insert(det);if(de)throw de;await db.doc('rsvps/'+ev.id+'_'+myId()).set({ev:ev.id,by:myId(),t:Date.now()});loadDetailsSoon()}else{events.push(ev);DETAILS[ev.id]=det;drawEv()}
- $('emsg').textContent='Clean created!';['et','el','edesc','eexact','econtact'].forEach(k=>$(k).value='');EVPIN=null;$('epin').textContent=''}catch(e){$('emsg').textContent='Could not create event: '+(e.message||'error')}};
+ let saved=false;
+ try{if(db){await db.doc('events/'+ev.id).set({...ev,rsvp:[]});saved=true;
+   const {error:de}=await sb.from('event_details').insert(det);if(de)throw Object.assign(de,{step:'meeting point'});
+   await db.doc('rsvps/'+ev.id+'_'+myId()).set({ev:ev.id,by:myId(),t:Date.now()});loadDetailsSoon()}
+  else{events.push(ev);DETAILS[ev.id]=det;drawEv()}
+  say('Clean created! It’s now in Upcoming cleans.');['et','el','edesc','eexact','econtact'].forEach(k=>$(k).value='');EVPIN=null;$('epin').textContent=''}
+ catch(e){uncool('event');
+  if(saved&&e.step){try{await db.doc('events/'+ev.id).delete()}catch(x){}}  // don't leave a half-made clean behind
+  console.error('Create clean failed',e);
+  say('Could not create the clean'+(e.step?' (saving the '+e.step+')':'')+': '+(e.message||e.code||'unknown error')+'. Please try again, and if it keeps happening send Jo this message.')}
+ btn.disabled=false};
 [1,2,3,4,5,6].forEach(n=>$('t'+n).onclick=()=>{[1,2,3,4,5,6].forEach(m=>{$('v'+m).classList.toggle('hide',m!==n);$('t'+m).classList.toggle('on',m===n)});if(n!==2)NEWRS.clear();render();drawAcct();drawNotif()});
 // ---- demo data (delete this block and the checkbox to remove) ----
 /* demo data switched off – the checkbox was removed */ let showDemo=false;const rnd=(x=>()=>(x=x*16807%2147483647)/2147483647)(7),DEMO=[];
