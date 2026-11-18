@@ -639,6 +639,7 @@ function makeAssets(client){return{async upload(blob,reportId){const me=(sbUser&
  db.collection('donations').onSnapshot(q=>{DONS=q.docs.map(d=>d.data());drawRaised()});
  db.collection('clean_records').onSnapshot(q=>{CLEANS=q.docs.map(d=>d.data());render()},{filter:q=>q.gt('t',Date.now()-90*864e5),order:'t',limit:400});  // cleaned areas from the last 90 days
  loadVolunteers();setInterval(loadVolunteers,60000);
+ loadNewMembers();setInterval(loadNewMembers,120000);
  loadNotices();try{sb.channel('jsn-notices').on('postgres_changes',{event:'*',schema:'public',table:'notices'},()=>loadNotices()).subscribe()}catch(e){}
  if(sbUser){const saved=JSON.parse(localStorage.getItem('jsn_acct')||'null');if(saved?.code)await setAcct(saved.name||'Volunteer',saved.code,false)}
 }catch(e){console.error('Supabase startup error',e);if(!sb)SBERR='Could not connect to Supabase: '+(e&&e.message||e);$('msg').textContent='Backend connection error – check config.js and the Supabase setup.'}})();
@@ -683,6 +684,28 @@ function startTour(){if($('tour'))return;const m=$('modal');if(m)m.classList.add
 function modalClosed(){if(TOUR_WAIT){TOUR_WAIT=false;setTimeout(startTour,350)}}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('tour'))endTour()});
 if($('tourbtn'))$('tourbtn').onclick=startTour;
+
+// ---- welcome board (example): newest members walking along one line at the top of Good news ----
+var NEWM=[];
+(()=>{const s=document.createElement('style');s.textContent='@keyframes wkA{from{transform:rotate(-24deg)}to{transform:rotate(24deg)}}@keyframes wkB{from{transform:translateY(0)}to{transform:translateY(-2.2px)}}@keyframes wkS{from{transform:translateX(-50%)}to{transform:translateX(0)}}.wk .l1,.wk .a2{transform-origin:50px 120px;animation:wkA .7s ease-in-out infinite alternate;animation-delay:var(--d,0s)}.wk .l2,.wk .a1{transform-origin:50px 120px;animation:wkA .7s ease-in-out infinite alternate-reverse;animation-delay:var(--d,0s)}.wk .a1{transform-origin:28px 90px}.wk .a2{transform-origin:72px 90px}.wk .bd{animation:wkB .35s ease-in-out infinite alternate;animation-delay:var(--d,0s)}#wtrack{display:flex;gap:12px;width:max-content;animation:wkS var(--dur,30s) linear infinite}#wstrip:hover #wtrack,#wstrip:focus-within #wtrack,#wstrip:active #wtrack{animation-play-state:paused}@media(prefers-reduced-motion:reduce){.wk .l1,.wk .l2,.wk .a1,.wk .a2,.wk .bd,#wtrack{animation:none}#wstrip{overflow-x:auto!important}}';document.head.appendChild(s)})();
+const joinedAgo=t=>{const n=Math.floor((Date.now()-new Date(t).getTime())/864e5);return n<=0?'joined today':n===1?'joined yesterday':n<30?`joined ${n} days ago`:'joined '+new Date(t).toLocaleDateString('en-GB',{day:'numeric',month:'short'})};
+// like charSVG, but arms and legs are separate so they can swing
+function walkSVG(raw,h,label,d){const a=parseAv(raw),w=Math.round(h*100/156),f=n=>Math.min(200,Math.max(0,+n||0));let fc='';
+ for(const st of a.s){const col=AVPEN[Math.round(+st[0])]||AVPEN[0],p=[];for(let i=1;i+1<st.length;i+=2)p.push((15+f(st[i])*.35).toFixed(1)+' '+(2+f(st[i+1])*.35).toFixed(1));
+  if(p.length)fc+=`<path d="M${p[0]}${p.length>1?'L'+p.slice(1).join('L'):'l.01 0'}" stroke="${col}"/>`}
+ return `<svg class="chr wk" viewBox="0 0 100 156" width="${w}" height="${h}" role="img" aria-label="${esc(label||'Character')}" style="flex:none;--d:${d}s"><rect width="100" height="156" rx="14" fill="#eef5e6"/><g stroke="#111" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><g class="l1"><path d="M34 120H50V128L47 148H36Z" fill="${AVBOT[a.p]}"/><path d="M33 151H47" stroke-width="4" fill="none"/></g><g class="l2"><path d="M50 120H66L64 148H53L50 128Z" fill="${AVBOT[a.p]}"/><path d="M53 151H67" stroke-width="4" fill="none"/></g><g class="bd"><path class="a1" d="M22 100L13 116" fill="none"/><path class="a2" d="M78 100L87 116" fill="none"/><path d="M50 64V80" fill="none"/><path d="M34 80L18 92L25 103L34 97V120H66V97L75 103L82 92L66 80Z" fill="${AVTOP[a.t]}"/><g fill="none" stroke-width="2.8">${fc}</g></g></g></svg>`}
+function drawWelcomeBoard(){const gc=$('stories')&&$('stories').closest('.card');if(!gc)return;let c=$('wboard');
+ if(!NEWM.length){if(c)c.remove();return}
+ if(!c){c=document.createElement('div');c.className='card';c.id='wboard';c.style.padding='10px 12px';c.style.overflow='hidden';c.style.minWidth='0';gc.parentNode.style.minWidth='0';gc.parentNode.insertBefore(c,gc)}
+ const tile=(p,i)=>`<div data-av="${esc(p.id)}" tabindex="0" role="button" title="${esc(p.name||'Volunteer')} – ${joinedAgo(p.created_at)}" style="cursor:pointer;text-align:center;width:58px">${walkSVG(AV[p.id],58,esc(p.name)+'’s character',-(i*.23).toFixed(2))}<div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name||'Volunteer')}</div></div>`;
+ let one=NEWM.slice();while(one.length*70<1300)one=one.concat(NEWM);   // enough for a seamless loop
+ const html=one.map(tile).join('');
+ c.innerHTML=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><b>Welcome, new members</b></div><div id="wstrip" style="overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent)"><div id="wtrack">${html}${html}</div></div>`;
+ $('wtrack').style.setProperty('--dur',(one.length*70/26).toFixed(0)+'s')}
+async function loadNewMembers(){if(!sbReady())return;
+ try{const {data,error}=await sb.from('profiles').select('id,name,avatar,created_at').order('created_at',{ascending:false}).limit(40);if(error)throw error;
+  NEWM=(data||[]).filter(p=>p.avatar&&p.created_at).slice(0,8);NEWM.forEach(p=>{AV[p.id]=p.avatar;NAMES[p.id]=p.name||'Volunteer'});drawWelcomeBoard()}
+ catch(e){NEWM=[];drawWelcomeBoard()}}
 
 // ---- welcome pop-up: shown every time the page loads ----
 function showWelcome(){let saved=null;try{saved=JSON.parse(localStorage.getItem('jsn_acct')||'null')}catch(e){}
