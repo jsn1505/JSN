@@ -165,7 +165,7 @@ const localId=(()=>{try{let g=localStorage.getItem('jsn_guest');if(!g){g=Math.ra
 // true if this item belongs to the signed-in account (safe to call before accounts have loaded)
 function isMine(by){try{return !!acct&&!!by&&acct.id===by}catch(e){return false}}
 // ---- simple pop-up box ----
-function showModal(html){let m=$('modal');if(!m){m=document.createElement('div');m.id='modal';m.className='modal';document.body.appendChild(m);m.onclick=e=>{if(e.target===m||e.target.dataset.close!==undefined)m.classList.add('hide')}}
+function showModal(html){let m=$('modal');if(!m){m=document.createElement('div');m.id='modal';m.className='modal';document.body.appendChild(m);try{new MutationObserver(()=>{if(m.classList.contains('hide'))modalClosed()}).observe(m,{attributes:true,attributeFilter:['class']})}catch(e){}m.onclick=e=>{if(e.target===m||e.target.dataset.close!==undefined)m.classList.add('hide')}}
  m.innerHTML=`<div class="box" role="dialog" aria-modal="true">${html}</div>`;m.classList.remove('hide')}
 const JO_EMAIL='Josn1505@gmail.com';
 function kitModal(rq,g){const sub=encodeURIComponent('JSN kit request'),body=encodeURIComponent(`Hi Jo,\n\nI've just requested ${rq.qty} × ${g.name} on JSN for: ${rq.evTitle||'Other'}.\nMy nickname is ${rq.name}.\n\nThanks!`);
@@ -525,7 +525,7 @@ $('acct').onclick=async e=>{const rg=e.target.dataset.recgo,rd=e.target.dataset.
  const dr=e.target.dataset.delrep;if(dr){if(!confirm('Delete this report? It will be removed from the map and its photos deleted.'))return;try{await deleteReport(dr);drawAcct();render()}catch(x){alert('Could not delete: '+(x.message||'not allowed'))}return}
  const a=e.target.dataset.a,g=e.target.closest('[data-go]');
  if(g){const r=byId(g.dataset.go);if(r){$('t1').click();sel=r.id;setView(r.lon,r.lat,Math.max(V.z,15));drawPop()}return}
- try{if(a==='avatar'){openAvatarEditor(false);return}if(a==='create'){await createAccount($('anick').value);drawAcct();openAvatarEditor(true)}
+ try{if(a==='avatar'){openAvatarEditor(false);return}if(a==='create'){await createAccount($('anick').value);drawAcct();TOUR_WAIT=!tourDone();openAvatarEditor(true)}
  if(a==='signin'){await signInAccount($('anick2').value.trim(),$('acode').value);drawAcct()}
  if(a==='show'){showCode=!showCode;drawAcct()}
  if(a==='copy'){try{await navigator.clipboard.writeText(acct.code);$('amsg').textContent='Copied.'}catch(x){$('amsg').textContent='Could not copy – select the code and copy it.'}}
@@ -650,21 +650,56 @@ document.querySelectorAll('.acc').forEach(a=>{a.setAttribute('role','button');a.
  a.addEventListener('click',e=>{if(e.target.closest('a'))return;t()});
  a.addEventListener('keydown',e=>{if(e.target!==a)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();t()}})});
 
+// ---- quick tour: spotlight walk-through of the tabs ----
+(()=>{const s=document.createElement('style');s.textContent='#tour{position:fixed;inset:0;z-index:70}#tourhole{position:fixed;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.72);border:2px solid var(--acc);pointer-events:none;transition:all .25s}#tourtip{position:fixed;left:12px;right:12px;margin:0 auto;max-width:420px;background:var(--panel);border:1px solid var(--acc);border-radius:14px;padding:14px 16px;box-shadow:0 10px 40px #000a}#tourtip h3{margin:0 0 4px}#tourtip p{margin:0 0 8px}#tourtip .tn{display:flex;gap:8px;align-items:center}#tourtip .tn button{margin:0}#tourtip .dots{flex:1;display:flex;gap:5px}#tourtip .dots i{width:7px;height:7px;border-radius:50%;background:#3a5a44}#tourtip .dots i.on{background:var(--acc)}';document.head.appendChild(s)})();
+var TOUR_WAIT=false,TOURI=-1;
+const tourDone=()=>{try{return !!localStorage.getItem('jsn_toured')}catch(e){return false}};
+const TOUR=[
+ {tab:'t1',t:'Welcome to JSN!',x:'Here is a quick tour of how the site works. You can skip any time.'},
+ {tab:'t1',el:'#mapwrap',t:'The map',x:'Tap the map to report litter. Orange pins still need cleaning, green ones are cleaned. Tap a pin to mark it cleaned, say it’s still there, or report it to the council.'},
+ {tab:'t1',el:'#reccard',t:'Record a clean',x:'Log how long you spent, how many bags you filled and highlight the area on the map. It adds to your stats.'},
+ {tab:'t2',el:'#t2',t:'Community cleans',x:'Join a clean near you, or organise your own. You can also request kit like litter pickers and bags.'},
+ {tab:'t3',el:'#t3',t:'Good news',x:'Share your good news – before and afters, finds and thank-yous.'},
+ {tab:'t4',el:'#t4',t:'Donate',x:'Every donation helps keep this project running. See how the money is used.'},
+ {tab:'t5',el:'#t5',t:'Information',x:'How long litter lasts, why it matters, how to report to your council and our privacy policy.'},
+ {tab:'t6',el:'#t6',t:'My stats',x:'Create a free account with just a nickname. Draw your character and see your time cleaning, bags filled and reports.'},
+ {tab:'t1',t:'You’re all set!',x:'Tap the map to report your first spot, or join a community clean.'}];
+function endTour(){const t=$('tour');if(t)t.remove();TOURI=-1;window.removeEventListener('resize',tourPlace);try{localStorage.setItem('jsn_toured','1')}catch(e){}window.scrollTo(0,0)}
+function tourPlace(){const st=TOUR[TOURI];if(!st)return;const hole=$('tourhole'),tip=$('tourtip'),el=st.el&&document.querySelector(st.el);
+ if(el){const r=el.getBoundingClientRect(),p=6;hole.style.cssText=`left:${r.left-p}px;top:${r.top-p}px;width:${r.width+2*p}px;height:${r.height+2*p}px`;
+  const low=(r.top+r.bottom)/2>innerHeight/2;tip.style.top=low?'12px':'auto';tip.style.bottom=low?'auto':'12px'}
+ else{hole.style.cssText='left:50%;top:50%;width:0;height:0';tip.style.top='auto';tip.style.bottom='24px'}}
+function tourShow(i){TOURI=i;const st=TOUR[i];if($(st.tab))$(st.tab).click();
+ const el=st.el&&document.querySelector(st.el);if(el)el.scrollIntoView({block:st.el==='#mapwrap'||st.el==='#reccard'?'start':'nearest',behavior:'instant'});
+ if(el&&st.el==='#reccard')window.scrollBy(0,-90);
+ const last=i===TOUR.length-1;
+ $('tourtip').innerHTML=`<h3 id="tourt">${st.t}</h3><p class="mute">${st.x}</p><div class="tn"><span class="dots">${TOUR.map((_,k)=>`<i class="${k===i?'on':''}"></i>`).join('')}</span>${i&&!last?'<button class="s" data-tn="back">Back</button>':''}${last?'':'<button class="s" data-tn="skip">Skip</button>'}<button class="p" data-tn="next">${last?'Finish':'Next'}</button></div>`;
+ tourPlace();setTimeout(tourPlace,60);$('tourtip').querySelector('[data-tn=next]').focus()}
+function startTour(){if($('tour'))return;const m=$('modal');if(m)m.classList.add('hide');
+ const t=document.createElement('div');t.id='tour';t.innerHTML='<div id="tourhole"></div><div id="tourtip" role="dialog" aria-modal="true" aria-labelledby="tourt"></div>';document.body.appendChild(t);
+ t.onclick=e=>{const b=e.target.closest('[data-tn]');if(!b)return;const k=b.dataset.tn;
+  if(k==='skip')return endTour();if(k==='back')return tourShow(Math.max(0,TOURI-1));if(TOURI>=TOUR.length-1)return endTour();tourShow(TOURI+1)};
+ window.addEventListener('resize',tourPlace);window.addEventListener('scroll',tourPlace,{passive:true});tourShow(0)}
+function modalClosed(){if(TOUR_WAIT){TOUR_WAIT=false;setTimeout(startTour,350)}}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('tour'))endTour()});
+if($('tourbtn'))$('tourbtn').onclick=startTour;
+
 // ---- welcome pop-up: shown every time the page loads ----
 function showWelcome(){let saved=null;try{saved=JSON.parse(localStorage.getItem('jsn_acct')||'null')}catch(e){}
  const step=(n,t,x)=>`<div style="display:flex;gap:10px;margin:10px 0"><b style="flex:0 0 26px;height:26px;border-radius:50%;background:var(--acc);color:#08180f;display:flex;align-items:center;justify-content:center">${n}</b><div><b>${t}</b><br><span class="mute">${x}</span></div></div>`;
  showModal(`<h2 id="wtitle" style="margin-top:0">${saved?'Welcome back'+(saved.name?', '+esc(saved.name):'')+'!':'Welcome to JSN'}</h2>
-<p style="margin:0 0 4px">Together we keep the UK litter-free. Here’s how it works:</p>
+<p style="margin:0 0 4px">We can keep the UK clean. Here’s how it works:</p>
 ${step(1,'See rubbish? Take a picture','Can’t pick it up there and then? Snap a photo – the map reads the location from it.')}
 ${step(2,'Report it','It appears on the map so anyone passing can clean it up.')}
 ${step(3,'Clean it','Cleared a spot? Mark it cleaned with an “after” photo.')}
 ${step(4,'Join a community clean','Meet people near you, or organise your own.')}
 <p style="margin:12px 0 0;text-align:center">Every donation helps keep this project running. <a href="https://gofund.me/15d8a7427" target="_blank" rel="noopener" style="color:var(--acc);font-weight:700">Donate on GoFundMe</a></p>
 ${saved?`<button class="p" data-close style="width:100%">Let’s go</button>`:
-`<div style="background:var(--line);border-radius:10px;padding:12px;margin-top:12px"><b>Create your free account</b><br><span class="mute">No email or password – just pick a nickname. You need one to report, clean and join cleans.</span><button class="p" data-wa="create" style="width:100%">Create my account</button></div>
+`<div style="background:var(--line);border-radius:10px;padding:12px;margin-top:12px"><b>Create your free account</b><br><span class="mute">No email or password – just pick a nickname. You’ll be given a recovery code: make sure you write it down, as it’s the only way to get back into your account. You need an account to report, clean and join cleans.</span><button class="p" data-wa="create" style="width:100%">Create my account</button></div>
 <button class="s" data-close style="width:100%;margin-top:8px">Just look around first</button>`}`);
  const m=$('modal'),b=m.querySelector('.box');b.setAttribute('aria-labelledby','wtitle');
  const go=m.querySelector('[data-wa=create]');if(go)go.onclick=()=>{m.classList.add('hide');$('t6').click();setTimeout(()=>{const n=$('anick');if(n)n.focus()},50)};
+ if(!saved){const lk=m.querySelector('[data-close]');if(lk)lk.addEventListener('click',()=>setTimeout(startTour,250))}
  (m.querySelector('[data-wa=create]')||m.querySelector('[data-close]')).focus()}
 document.addEventListener('keydown',e=>{const m=$('modal');if(e.key==='Escape'&&m&&!m.classList.contains('hide'))m.classList.add('hide')});
 showWelcome();
