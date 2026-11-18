@@ -44,12 +44,13 @@ function render(){
   if(!im){im=T[k]=new Image();im.draggable=false;im.onload=()=>{tilesOK=true;render()};im.src=`https://tile.openstreetmap.org/${z}/${tx}/${y}.png`;tl.appendChild(im)}
   im.style.left=(x*256-V.cx+W/2)+'px';im.style.top=(y*256-V.cy+H/2)+'px'}
  for(const k in T)if(!want[k]){T[k].remove();delete T[k]}
- const cells='',ms=z<8?.6:1,pin=(r,x,y)=>{const c=r.cleaned?'#2e9e5b':(r.cat==='hazard'?'#d62828':'#f08a24');return `<g data-id="${esc(r.id)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(r.id===sel?1.3:1)*ms})" style="cursor:pointer"><path d="M0 0C-13-15-13-32 0-32S13-15 0 0z" fill="${c}" stroke="#fff" stroke-width="2"/><text y="-15" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">${r.cleaned?'✓':'!'}</text></g>`};
+ const cells=areasSVG(),ms=z<8?.6:1,pin=(r,x,y)=>{const c=r.cleaned?'#2e9e5b':(r.cat==='hazard'?'#d62828':'#f08a24');return `<g data-id="${esc(r.id)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(r.id===sel?1.3:1)*ms})" style="cursor:pointer"><path d="M0 0C-13-15-13-32 0-32S13-15 0 0z" fill="${c}" stroke="#fff" stroke-width="2"/><text y="-15" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">${r.cleaned?'✓':'!'}</text></g>`};
  const vis=reports.filter(r=>showClean||!r.cleaned||Date.now()-(r.cleanedT||0)<14*864e5).map(r=>[r,...P(r.lon,r.lat)]).filter(q=>q[1]>-30&&q[2]>-40&&q[1]<W+30&&q[2]<H+30);let pins='';
  if(z<11){const B={};vis.forEach(q=>{const k=Math.floor(q[1]/44)+'_'+Math.floor(q[2]/44);(B[k]=B[k]||[]).push(q)});
   Object.values(B).forEach(g=>{if(g.length===1)pins+=pin(...g[0]);else{const m=f=>g.reduce((a,q)=>a+f(q),0)/g.length;pins+=`<g data-cl="${m(q=>q[0].lon)},${m(q=>q[0].lat)}" transform="translate(${m(q=>q[1]).toFixed(1)} ${m(q=>q[2]).toFixed(1)})" style="cursor:pointer"><circle r="${12+Math.min(10,Math.sqrt(g.length))}" fill="#f08a24" stroke="#fff" stroke-width="2"/><text y="4" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${g.length}</text></g>`}})}
  else pins=vis.map(q=>pin(...q)).join('');
  let cur='';if(ME){const [x,y]=P(ME.lon,ME.lat);cur+=`<circle cx="${x}" cy="${y}" r="16" fill="#3a86ff" opacity=".18"/><circle cx="${x}" cy="${y}" r="8" fill="#3a86ff" stroke="#fff" stroke-width="3"/>`}if(pinned){const [x,y]=P(pinned.lon,pinned.lat);cur+=`<circle cx="${x}" cy="${y}" r="7" fill="#3a86ff" stroke="#fff" stroke-width="2"/>`}
+ cur+=recDraft();
  ov.setAttribute('viewBox',`0 0 ${W} ${H}`);
  const wb=ISLAND==='B'?.035:0,land=`<path d="${pathD(UKC,wb)}"/>`,ie=`<path d="${pathD(IEC,wb)}"/>`,k=Math.max(1,(z-4)*.8);
  if(z>=9&&tilesOK)ov.innerHTML=cells+pins+cur;
@@ -73,7 +74,7 @@ wrap.addEventListener('dblclick',e=>{const r=wrap.getBoundingClientRect();zoomBy
 // ---- touch & mouse: one finger drags the map, two fingers pinch to zoom ----
 const PTR=new Map();let pinch=null;
 const mid=()=>{const a=[...PTR.values()],r=wrap.getBoundingClientRect();return {x:(a[0].x+a[1].x)/2-r.left,y:(a[0].y+a[1].y)/2-r.top,d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)}};
-wrap.addEventListener('pointerdown',e=>{if(e.target.closest('.ctl,#sb,#pop'))return;PTR.set(e.pointerId,{x:e.clientX,y:e.clientY});try{wrap.setPointerCapture(e.pointerId)}catch(x){}
+wrap.addEventListener('pointerdown',e=>{if(e.target.closest('.ctl,#sb,#pop,#recbar'))return;PTR.set(e.pointerId,{x:e.clientX,y:e.clientY});try{wrap.setPointerCapture(e.pointerId)}catch(x){}
  if(PTR.size===2){pinch=mid();drag=null;return}
  if(PTR.size>2)return;const mk=e.target.closest('[data-id],[data-cl]');drag={x:e.clientX,y:e.clientY,m:false,id:mk&&mk.dataset.id,cl:mk&&mk.dataset.cl}});
 wrap.addEventListener('pointermove',e=>{if(!PTR.has(e.pointerId))return;PTR.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -83,7 +84,7 @@ wrap.addEventListener('pointermove',e=>{if(!PTR.has(e.pointerId))return;PTR.set(
 const ptrEnd=e=>{PTR.delete(e.pointerId);if(pinch){if(PTR.size<2)pinch=null;drag=null;return true}return false};
 ['gesturestart','gesturechange'].forEach(t=>wrap.addEventListener(t,e=>e.preventDefault()));  // stop Safari zooming the whole page
 wrap.addEventListener('pointercancel',e=>{ptrEnd(e);drag=null});
-wrap.addEventListener('pointerup',e=>{if(ptrEnd(e))return;if(drag&&!drag.m){if(drag.cl){const q=drag.cl.split(',').map(Number);setView(q[0],q[1],Math.min(19,V.z+2))}else if(drag.id){sel=drag.id;drawPop();render()}else if(sel){sel=null;drawPop();render()}else{const r=wrap.getBoundingClientRect();setPin(ilon(V.cx+e.clientX-r.left-W/2,V.z),ila(V.cy+e.clientY-r.top-H/2,V.z))}}drag=null});
+wrap.addEventListener('pointerup',e=>{if(ptrEnd(e))return;if(drag&&!drag.m){if(REC.on){const r=wrap.getBoundingClientRect();recAdd(ilon(V.cx+e.clientX-r.left-W/2,V.z),ila(V.cy+e.clientY-r.top-H/2,V.z))}else if(drag.cl){const q=drag.cl.split(',').map(Number);setView(q[0],q[1],Math.min(19,V.z+2))}else if(drag.id){sel=drag.id;drawPop();render()}else if(sel){sel=null;drawPop();render()}else{const r=wrap.getBoundingClientRect();setPin(ilon(V.cx+e.clientX-r.left-W/2,V.z),ila(V.cy+e.clientY-r.top-H/2,V.z))}}drag=null});
 const byId=id=>reports.find(r=>r.id===id);let POPFOR=null;
 // ---- marking a spot cleaned needs an "after" photo ----
 let POPMSG='',CLEANFOR=null;
@@ -94,13 +95,21 @@ $('cleanphoto').onchange=async()=>{const f=$('cleanphoto').files[0],id=CLEANFOR;
   POPMSG='';upd(id,{cleaned:true,cleanedT:Date.now(),cleanedBy:myId(),cleanedImg:url})}catch(e){POPMSG='Photo upload failed: '+(e.message||e);drawPop()}};
 function upd(id,patch){const r=byId(id);if(!r)return;if(db&&!r.demo)db.doc('reports/'+id).update(patch).then(()=>{Object.assign(r,patch);render();drawPop()}).catch(e=>{$('msg').textContent='Could not save – '+(e.message||'permission denied')});else{Object.assign(r,patch);render();drawPop()}}
 function placePop(){const p=$('pop'),r=sel&&byId(sel);if(!r)return;const [x,y]=P(r.lon,r.lat);p.style.left=Math.min(Math.max(x,120),W-120)+'px';p.style.top=Math.max(y-40*(V.z<8?.6:1),p.offsetHeight+10)+'px'}
-function drawPop(){const p=$('pop'),r=sel&&byId(sel);if(!r){p.classList.add('hide');return}loadStills(r.id);if(POPFOR!==r.id){POPFOR=r.id;POPMSG=''}
+var POPCNL=null;   // report id whose "report to council" panel is open
+function councilText(r){const c=(CATS[r.cat]||CATS.litter)[1],la=(+r.lat).toFixed(5),lo=(+r.lon).toFixed(5);
+ return `${c} reported on ${new Date(r.t).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}.${r.note?' Note: '+r.note+'.':''}\nLocation: ${la}, ${lo}\nMap: https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=18/${la}/${lo}${r.img?'\nPhoto: '+r.img:''}\n(Reported via JSN, a community litter map.)`}
+function councilPanel(r){const hz=r.cat==='hazard'||r.cat==='glass';
+ return `<div style="margin-top:8px;padding:8px;border:1px solid var(--acc);border-radius:10px;background:#0b1d12"><b>Report to your council</b><div class="mute" style="margin:4px 0">${hz?'Don’t touch it. If anyone is in danger, call 999. ':''}Councils look after dumped rubbish, overflowing bins and street cleaning. Copy the details below, then paste them into your council’s form.</div><textarea readonly rows="5" style="width:100%;font:inherit;font-size:12px;background:#08140d;color:inherit;border:1px solid #2c4a37;border-radius:8px;padding:6px;box-sizing:border-box" aria-label="Details to send to your council">${esc(councilText(r))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="s" data-act="ccopy">Copy details</button><button class="s" data-open="https://www.gov.uk/report-flytipping">Fly-tipping (GOV.UK)</button><button class="s" data-open="https://www.gov.uk/find-local-council">Find my council</button></div></div>`}
+function drawPop(){const p=$('pop'),r=sel&&byId(sel);if(!r){p.classList.add('hide');return}loadStills(r.id);if(POPFOR!==r.id){POPFOR=r.id;POPMSG='';POPCNL=null}
  const c=CATS[r.cat]||CATS.litter,st=stillOf(r).length,d=t=>new Date(t).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
  const ph=(u,l)=>`<figure style="margin:0;flex:1;min-width:0"><img src="${esc(thumb(u))}" data-full="${esc(u)}" data-open="${esc(u)}" alt="${l} photo" style="width:100%;height:96px;object-fit:cover;border-radius:8px"><figcaption class="mute" style="text-align:center">${l}</figcaption></figure>`;
- p.innerHTML=`<button class="s" data-act="close" style="float:right;padding:0 8px">✕</button>${r.cleaned&&r.cleanedImg?`<div style="display:flex;gap:6px;margin-bottom:6px;clear:both">${r.img?ph(r.img,'Before'):''}${ph(r.cleanedImg,'After')}</div>`:r.img?`<img src="${esc(thumb(r.img))}" data-full="${esc(r.img)}" data-open="${esc(r.img)}" alt="Report photo – tap to enlarge" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;margin-bottom:6px;cursor:zoom-in">`:''}<b>${c[0]} ${c[1]}</b>${r.note?`<div>${esc(r.note)}</div>`:''}<div class="mute">Reported ${d(r.t)}${st?` · ${st} say still there`:''}</div>${r.cleaned?`<div style="color:var(--acc);margin:6px 0">✓ Cleaned ${d(r.cleanedT)}</div>${isMine(r.cleanedBy)?'<button class="s" data-act="reopen">Undo – I haven’t cleaned it</button>':'<button class="s" data-act="reopen">Not actually cleaned</button>'}`:`<div style="display:flex;gap:6px;margin-top:8px"><button class="p" style="margin:0;flex:1" data-act="done">📷 Mark cleaned</button><button class="s" data-act="still">Still there</button></div><div class="mute" style="margin-top:4px">You’ll need to add a photo of the cleaned spot.</div>`}${POPMSG?`<div style="color:var(--acc);margin-top:6px">${esc(POPMSG)}</div>`:''}`;
+ p.innerHTML=`<button class="s" data-act="close" style="float:right;padding:0 8px">✕</button>${r.cleaned&&r.cleanedImg?`<div style="display:flex;gap:6px;margin-bottom:6px;clear:both">${r.img?ph(r.img,'Before'):''}${ph(r.cleanedImg,'After')}</div>`:r.img?`<img src="${esc(thumb(r.img))}" data-full="${esc(r.img)}" data-open="${esc(r.img)}" alt="Report photo – tap to enlarge" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;margin-bottom:6px;cursor:zoom-in">`:''}<b>${c[0]} ${c[1]}</b>${r.note?`<div>${esc(r.note)}</div>`:''}<div class="mute">Reported ${d(r.t)}${st?` · ${st} say still there`:''}</div>${r.cleaned?`<div style="color:var(--acc);margin:6px 0">✓ Cleaned ${d(r.cleanedT)}</div>${isMine(r.cleanedBy)?'<button class="s" data-act="reopen">Undo – I haven’t cleaned it</button>':'<button class="s" data-act="reopen">Not actually cleaned</button>'}`:`<div style="display:flex;gap:6px;margin-top:8px"><button class="p" style="margin:0;flex:1" data-act="done">📷 Mark cleaned</button><button class="s" data-act="still">Still there</button></div><div class="mute" style="margin-top:4px">You’ll need to add a photo of the cleaned spot.</div><button class="s" data-act="council" style="margin-top:8px;width:100%">${POPCNL===r.id?'Hide council report':'Report to council'}</button>${POPCNL===r.id?councilPanel(r):''}`}${POPMSG?`<div style="color:var(--acc);margin-top:6px">${esc(POPMSG)}</div>`:''}`;
  p.classList.remove('hide');placePop()}
 $('pop').onclick=e=>{const op=e.target.dataset&&e.target.dataset.open;if(op&&/^https:\/\//.test(op)){window.open(op,'_blank','noopener');return}const a=e.target.dataset.act;if(!a)return;const me=myId(),r=byId(sel);
  if(a==='close'){sel=null;drawPop();render();return}
+ if(a==='council'&&r){POPCNL=POPCNL===r.id?null:r.id;drawPop();return}
+ if(a==='ccopy'&&r){const t=councilText(r),ok=()=>{POPMSG='Copied – paste it into your council’s form.';drawPop()};
+  try{navigator.clipboard.writeText(t).then(ok,()=>{const ta=$('pop').querySelector('textarea');if(ta){ta.focus();ta.select()}POPMSG='Select the text and copy it.';drawPop()})}catch(x){const ta=$('pop').querySelector('textarea');if(ta){ta.focus();ta.select()}POPMSG='Select the text and copy it.';drawPop()}return}
  if(a==='still'&&!acct){POPMSG='Sign in on the My stats tab first.';drawPop();return}
  if(!cool('pop_'+a,5,$('msg')))return;
  if(a==='done'){if(!acct){POPMSG='Sign in on the My stats tab first.';drawPop();return}CLEANFOR=sel;$('cleanphoto').value='';$('cleanphoto').click();return}
@@ -177,7 +186,7 @@ const cool=(k,sec,el)=>{let T={};try{T=JSON.parse(localStorage.getItem('jsn_cool
 // ---- characters: everyone draws their own face; top and trousers are picked from a palette ----
 // A character is saved as small JSON text in profiles.avatar: {"v":1,"t":topIndex,"p":trousersIndex,"s":[[penIndex,x,y,x,y,...],...]} (x,y on a 0-200 grid)
 (()=>{const s=document.createElement('style');s.textContent='.sw{width:30px;height:30px;min-height:0;border-radius:50%;border:2px solid #fff3;padding:0;margin:0 2px 0 0;cursor:pointer;background-image:none}.sw.on{border-color:#fff;box-shadow:0 0 0 2px var(--acc)}.swrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:8px 0}.swrow>span{flex:0 0 76px;color:var(--mute)}.chr{border-radius:12px}';document.head.appendChild(s)})();
-const AVPEN=['#111111','#5b3a1a','#c98b1d','#2e6bd6','#c0392b'],AVTOP=['#e63946','#f4a261','#f1c40f','#2a9d8f','#3a86ff','#8e44ad','#ffffff','#2d2d2d'],AVBOT=['#1f3a93','#3b3b3b','#6d4c2f','#2e7d32','#7b1fa2','#c0392b','#c9b79c','#111111'];
+const AVPEN=['#111111','#5b3a1a','#c98b1d','#2e6bd6','#c0392b','#2e7d32','#8e44ad','#e75480'],AVTOP=['#e63946','#f4a261','#f1c40f','#2a9d8f','#3a86ff','#8e44ad','#ffffff','#2d2d2d'],AVBOT=['#1f3a93','#3b3b3b','#6d4c2f','#2e7d32','#7b1fa2','#c0392b','#c9b79c','#111111'];
 let AV={},AVOK=true,AVLOAD=null,EDIT=null;
 const AVDEF=(()=>{const c=[];for(let i=0;i<=28;i++){const a=i/28*Math.PI*2;c.push(Math.round(100+72*Math.cos(a)),Math.round(110+72*Math.sin(a)))}
  const sm=[];for(let i=0;i<=10;i++){const a=Math.PI*(.15+.7*i/10);sm.push(Math.round(100+38*Math.cos(a)),Math.round(120+30*Math.sin(a)))}
@@ -251,6 +260,64 @@ async function loadAvReports(){const el=$('avrlist');if(!el||!sbReady())return;
   const nm=await fetchNames(ids);ids.forEach(i=>{if(!(i in NAMES))NAMES[i]=nm[i]});
   el.innerHTML=ids.sort((a,b)=>G[b]-G[a]).map(i=>`<div class="note" style="display:flex;gap:10px;align-items:center">${charSVG(AV[i],70)}<div style="flex:1"><b>${esc(nm[i]||'Volunteer')}</b><br><span class="mute">${G[i]} report${G[i]===1?'':'s'}</span></div><div style="display:flex;flex-direction:column;gap:6px"><button class="s" data-avreset="${esc(i)}">Reset</button><button class="s" data-avkeep="${esc(i)}">Dismiss</button></div></div>`).join('')}
  catch(e){el.textContent='Could not load character reports – has the characters SQL patch been run?'}}
+
+// ---- record a clean: time spent, bags filled and the area cleaned (outlined on the map) ----
+(()=>{const s=document.createElement('style');s.textContent='#recbar{position:absolute;left:8px;right:8px;bottom:8px;z-index:7;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#0b1d12ee;border:1px solid var(--acc);border-radius:12px;padding:8px 10px;cursor:default}#recbar.hide{display:none}#recbar span{flex:1;min-width:150px}#recbar button{margin:0}';document.head.appendChild(s)})();
+var CLEANS=[],REC={on:false,pts:[]},MYREC={id:null,minutes:0,bags:0,list:[],ok:false},MYRECWAIT=0;   // var: render() can run before this line
+const fmtDur=min=>{min=Math.round(+min||0);const h=Math.floor(min/60),m=min%60;return h?(m?h+'h '+m+'m':h+'h'):m+'m'};
+const fmtArea=m=>m<1e4?Math.round(m)+' m²':m<1e6?(m/1e4).toFixed(1)+' ha':(m/1e6).toFixed(2)+' km²';
+function parseArea(s){try{const a=JSON.parse(s);if(!Array.isArray(a))return null;const p=a.slice(0,40).map(q=>[+q[0],+q[1]]).filter(q=>isFinite(q[0])&&isFinite(q[1])&&q[0]>49&&q[0]<62&&q[1]>-9&&q[1]<3);return p.length>=3?p:null}catch(e){return null}}
+function polyArea(p){const la0=p.reduce((a,q)=>a+q[0],0)/p.length,kx=111320*Math.cos(la0*Math.PI/180),ky=110540;let s=0;
+ for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=(a[1]*kx)*(b[0]*ky)-(b[1]*kx)*(a[0]*ky)}return Math.abs(s)/2}
+// green patches for cleaned areas (everyone sees these) – drawn under the pins
+function areasSVG(){let out='';for(const r of (CLEANS||[])){const p=r._p||(r._p=parseArea(r.area));if(!p)continue;
+ out+=`<polygon points="${p.map(q=>P(q[1],q[0]).map(n=>n.toFixed(1)).join(',')).join(' ')}" fill="#3fb950" fill-opacity=".3" stroke="#7ee787" stroke-width="2" stroke-linejoin="round"><title>Cleaned: ${esc(fmtDur(r.minutes))}, ${+r.bags||0} bag${+r.bags===1?'':'s'}</title></polygon>`}return out}
+// the outline someone is drawing right now
+function recDraft(){const p=(REC&&REC.pts)||[];if(!p.length)return '';const q=p.map(x=>P(x[1],x[0])),pts=q.map(a=>a.map(n=>n.toFixed(1)).join(',')).join(' ');
+ return (p.length>=3?`<polygon points="${pts}" fill="#ffd166" fill-opacity=".28" stroke="#ffd166" stroke-width="3" stroke-dasharray="8 6" stroke-linejoin="round"/>`:`<polyline points="${pts}" fill="none" stroke="#ffd166" stroke-width="3" stroke-dasharray="8 6"/>`)
+  +q.map((a,i)=>`<circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="${i?6:8}" fill="${i?'#fff':'#ffd166'}" stroke="#222" stroke-width="2"/>`).join('')}
+function recUI(){const n=REC.pts.length,txt=n>=3?`Area: ${fmtArea(polyArea(REC.pts))} (${n} points)`:'';
+ if($('recbar')){$('recbar').classList.toggle('hide',!REC.on);$('recn').textContent=n?`${n} point${n===1?'':'s'}${txt?' · '+fmtArea(polyArea(REC.pts)):' – keep tapping'}`:'Tap around the edge of the area you cleaned'}
+ if($('crarea'))$('crarea').textContent=n>=3?'Area highlighted: '+txt.replace('Area: ',''):(REC.on?'Tap points around the edge on the map…':'Not highlighted yet.');
+ if($('crdraw'))$('crdraw').textContent=REC.on?'Drawing on the map…':(n>=3?'Change the area':'Highlight the area on the map')}
+function recAdd(lon,lat){if(lat<49.8||lat>61||lon<-8.7||lon>2){$('crmsg').textContent='JSN covers the UK – that point is outside it.';return}
+ const s=P(lon,lat),L=REC.pts[REC.pts.length-1];if(L){const l=P(L[1],L[0]);if(Math.hypot(s[0]-l[0],s[1]-l[1])<10)return}  // ignore double-taps
+ if(REC.pts.length>=40){$('recn').textContent='That’s the most points allowed – tap Done.';return}
+ REC.pts.push([lat,lon]);recUI();render()}
+$('crdraw').onclick=()=>{REC.on=true;if(REC.pts.length>=3)REC.pts=[];$('crmsg').textContent='';recUI();render();wrap.scrollIntoView({block:'center',behavior:'smooth'})};
+$('recundo').onclick=()=>{REC.pts.pop();recUI();render()};
+$('reclear').onclick=()=>{REC.pts=[];recUI();render()};
+$('recdone').onclick=()=>{if(REC.pts.length<3){$('recn').textContent='Add at least 3 points first.';return}REC.on=false;recUI();render()};
+$('crgo').onclick=async()=>{const m=$('crmsg'),say=x=>{m.textContent=x};
+ if(!acct)return say('Create or sign in to a My stats account to record a clean.');
+ const h=Math.floor(+$('crh').value||0),mi=Math.floor(+$('crm').value||0),min=h*60+mi,bags=Math.floor(+$('crb').value||0);
+ if(h<0||mi<0||mi>59||bags<0)return say('Please check the time and bags – minutes go from 0 to 59.');
+ if(min<1)return say('Enter how long you spent cleaning.');if(min>720)return say('That’s over 12 hours – please record long cleans in two or more parts.');
+ if(bags>500)return say('Bags can be up to 500 per clean.');
+ if(REC.pts.length<3)return say('Highlight the area you cleaned: tap “Highlight the area on the map”, tap around its edge, then Done.');
+ if(REC.on)return say('Tap Done on the map to finish outlining the area first.');
+ if(polyArea(REC.pts)>5e6)return say('That area is very big – please highlight just the part you cleaned (up to 5 km²).');
+ if(!db)return say('Can’t save right now (not connected).');
+ if(!cool('rec',30,m))return;
+ const rec={id:Date.now()+'_'+localId,user_id:acct.id,minutes:min,bags,area:JSON.stringify(REC.pts.map(q=>[+q[0].toFixed(5),+q[1].toFixed(5)])),t:Date.now()};
+ $('crgo').disabled=true;say('Saving…');
+ try{await db.doc('clean_records/'+rec.id).set(rec);
+  if(MYREC.id===acct.id&&MYREC.ok){MYREC.minutes+=min;MYREC.bags+=bags;MYREC.list.unshift(rec)}
+  if(!CLEANS.some(x=>x.id===rec.id))CLEANS.push(rec);
+  REC={on:false,pts:[]};$('crh').value=0;$('crm').value=30;$('crb').value=1;recUI();render();drawAcct();
+  say(`Recorded – thank you! ${fmtDur(min)} and ${bags} bag${bags===1?'':'s'} added to your stats.`)}
+ catch(x){uncool('rec');say(/relation|does not exist|schema cache|clean_records/i.test(x.message||'')?'Recording cleans needs a one-off database update first – tell Jo.':'Could not save: '+(x.message||'error'))}
+ $('crgo').disabled=false};
+// totals for My stats (counted from this person's own records)
+async function loadMyRecords(){const id=acct&&acct.id;if(!sbReady()||!id||MYREC.id===id||Date.now()<MYRECWAIT)return;MYREC={id,minutes:0,bags:0,list:[],ok:false};
+ try{let all=[];for(let from=0;from<10000;from+=1000){const {data,error}=await sb.from('clean_records').select('id,minutes,bags,area,t').eq('user_id',id).order('t',{ascending:false}).range(from,from+999);if(error)throw error;all=all.concat(data||[]);if(!data||data.length<1000)break}
+  MYREC={id,minutes:all.reduce((a,r)=>a+(+r.minutes||0),0),bags:all.reduce((a,r)=>a+(+r.bags||0),0),list:all,ok:true};drawAcct()}
+ catch(e){MYREC.id=null;MYRECWAIT=Date.now()+30000}}
+// zoom the map to a recorded area
+function showRecord(r){const p=parseArea(r.area);if(!p)return;$('t1').click();
+ const la=p.map(q=>q[0]),lo=p.map(q=>q[1]),cla=(Math.min(...la)+Math.max(...la))/2,clo=(Math.min(...lo)+Math.max(...lo))/2,
+  span=Math.max(Math.max(...lo)-Math.min(...lo),(Math.max(...la)-Math.min(...la))/Math.cos(cla*Math.PI/180),1e-4),
+  z=Math.min(18,Math.max(10,Math.floor(Math.log2(.6*Math.min(wrap.clientWidth||600,wrap.clientHeight||500)*360/(256*span)))));setView(clo,cla,z);wrap.scrollIntoView({block:'center',behavior:'smooth'})}
 
 // ---- RSVP notifications for organisers: a badge on the Community cleans tab + a "Your notifications" list ----
 // "Seen" is remembered per account on each device.
@@ -419,12 +486,13 @@ async function createAccount(name){needSb();name=(name||'').trim();if(!name)thro
 async function signInAccount(name,code){needSb();const clean=fmt(code),raw=clean.replace(/-/g,'');if(!(raw.length===16&&[...raw].every(x=>AL.includes(x))&&chk(raw.slice(0,15))===raw[15]))throw new Error('That code doesn\'t look right – check for typos.');const email=await authEmail(clean);const {error}=await sb.auth.signInWithPassword({email,password:clean});if(error)throw error;const {data:ss}=await sb.auth.getSession();const {data:pp}=await sb.from('profiles').select('name').eq('id',ss.session.user.id).maybeSingle();await finishAcct(name||pp?.name||'Volunteer',clean,true);showCode=false}
 async function setAcct(name,code,save){if(!sb)return;try{const email=await authEmail(code);const {error}=await sb.auth.signInWithPassword({email,password:fmt(code)});if(error)throw error;await finishAcct(name,code,save)}catch(e){console.warn('Saved account could not be restored',e)}}
 function drawAcct(){drawAcctInner();const el=$('acct');if(el&&NAMEMSG){el.insertAdjacentHTML('afterbegin',`<div class="card" style="border-color:var(--acc)">${esc(NAMEMSG)}</div>`);NAMEMSG=''}if(el&&acct&&isAdmin&&!$('slist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Strikes <span class="mute">(only admins can see this)</span></h2><p class="mute">When someone taps “Not actually cleaned”, it waits here for you. A strike is only given if you approve it. 5 approved strikes blocks the account.</p><div id="slist" class="mute">Loading…</div></div>');loadStrikes()}if(el&&acct&&isAdmin&&!$('avrlist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Reported characters <span class="mute">(only admins can see this)</span></h2><p class="mute">Tap Reset to wipe a drawing that isn’t appropriate (they can draw a new one), or Dismiss to ignore the reports.</p><div id="avrlist" class="mute">Loading…</div></div>');loadAvReports()}}
-function drawAcctInner(){const el=$('acct');if(!el)return;setTimeout(drawNotif);drawWho();if(acct){setTimeout(loadMyStill);setTimeout(loadMyAvatar)}
+function drawAcctInner(){const el=$('acct');if(!el)return;setTimeout(drawNotif);drawWho();if(acct){setTimeout(loadMyStill);setTimeout(loadMyAvatar);setTimeout(loadMyRecords)}
  if(!acct){el.innerHTML=`<div class="card"><h2>Create your account</h2><p>No email or password is required. Pick a nickname and you'll get a recovery code. The code is used as your account password behind the scenes.</p><label>Nickname</label><input id="anick" maxlength="20" placeholder="e.g. RiverRanger"><button class="p" data-a="create">Create account</button><div id="cmsg" class="mute" style="margin-top:6px"></div></div><div class="card"><h2>Already have a code?</h2><label>Recovery code</label><input id="acode" placeholder="XXXX-XXXX-XXXX-XXXX"><label>Nickname (optional)</label><input id="anick2" maxlength="20"><button class="p" data-a="signin">Sign in</button><div id="amsg" class="mute" style="margin-top:6px"></div></div>`;return}
  const id=acct.id,mine=reports.filter(r=>r.by===id).sort((a,b)=>b.t-a.t),done=reports.filter(r=>r.cleaned&&r.cleanedBy===id).length,still=MYSTILL.id===id?MYSTILL.n:'…',joined=allEv().filter(e=>rsvpOf(e).includes(id)).length;
  el.innerHTML=`<div class="card"><h2>${esc(acct.name)}</h2><p class="mute">Your recovery code is the only way to get this account back on another device. Keep it private – anyone who has it can act as you.</p>${showCode?'<p style="color:#ffd27a"><b>Save this code now.</b> It is the only way to sign back in and we cannot show it again if you lose it.</p>':''}<div style="font:700 22px 'Atkinson Hyperlegible',system-ui,sans-serif;letter-spacing:2px;margin:8px 0">${showCode?acct.code:'••••-••••-••••-••••'}</div><button class="s" data-a="show">${showCode?'Hide':'Show'} code</button> <button class="s" data-a="copy">Copy</button> <button class="s" data-a="out">Sign out</button><div id="amsg" class="mute" style="margin-top:6px"></div></div>
 <div class="card"><h2>Your character</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${charSVG(AV[id],130,'Your character')}<div style="flex:1;min-width:160px"><p class="mute" style="margin:0 0 8px">This is you on JSN. It shows next to your name on Good news posts and in the lists on Community cleans.</p><button class="p" data-a="avatar" style="margin:0">${AV[id]?'Change my character':'Draw my character'}</button></div></div></div>
-<div class="card"><h2>Your stats</h2><div class="g">${[[mine.length,'reports made'],[done,'cleaned by you'],[still,'“still there” checks'],[joined,'cleans joined']].map(([n,l])=>`<div class="pr"><b class="n">${n}</b>${l}</div>`).join('')}</div></div>
+<div class="card"><h2>Your stats</h2><div class="g">${[[MYREC.ok&&MYREC.id===id?fmtDur(MYREC.minutes):'–','spent cleaning'],[MYREC.ok&&MYREC.id===id?MYREC.bags:'–','bags filled'],[mine.length,'reports made'],[done,'cleaned by you'],[still,'“still there” checks'],[joined,'cleans joined']].map(([n,l])=>`<div class="pr"><b class="n">${n}</b>${l}</div>`).join('')}</div></div>
+<div class="card"><h2>Your recorded cleans</h2>${MYREC.ok&&MYREC.id===id&&MYREC.list.length?MYREC.list.slice(0,8).map(r=>`<div class="rep" style="align-items:center"><div style="flex:1"><b>${fmtDur(r.minutes)}</b> · ${+r.bags||0} bag${+r.bags===1?'':'s'}<br><span class="mute">${fmtDate(r.t)}</span></div><button class="s" data-recgo="${esc(r.id)}">Show</button><button class="s" data-recdel="${esc(r.id)}">Delete</button></div>`).join(''):'<p class="mute">Nothing recorded yet – use “Record a clean” on the Map tab.</p>'}</div>
 <div class="card"><h2>Your reports</h2>${mine.length?mine.slice(0,10).map(r=>{const c=CATS[r.cat]||CATS.litter;return `<div class="rep" data-go="${r.id}" style="cursor:pointer;align-items:center"><div style="font-size:26px;flex:0 0 52px;text-align:center">${c[0]}</div><div style="flex:1"><b>${c[1]}</b> · ${r.cleaned?'✓ cleaned':'still open'}<br><span class="mute">${esc(r.note||'')}</span></div><button class="s" data-delrep="${esc(r.id)}">Delete</button></div>`}).join(''):'<p class="mute">You haven\'t reported anything yet.</p>'}</div>`}
 // ---- strikes: given automatically when someone taps "Not actually cleaned"; 5 strikes blocks an account ----
 async function loadStrikes(){const el=$('slist');if(!el||!sb)return;try{
@@ -448,7 +516,10 @@ const photoPath=u=>{const i=(u||'').indexOf('/report-photos/');return i<0?null:d
 async function deleteReport(id){const r=byId(id);if(db){const paths=[r&&r.img,r&&r.cleanedImg].map(photoPath).filter(Boolean).flatMap(p=>[p,p.replace(/\.jpg$/,'_t.jpg')]);
  if(paths.length){const {error}=await sb.storage.from('report-photos').remove(paths);if(error)console.warn('Photo delete failed',error)}
  await db.doc('reports/'+id).delete()}real=real.filter(x=>x.id!==id)}
-$('acct').onclick=async e=>{const ar=e.target.dataset.avreset,ak=e.target.dataset.avkeep;if(ar||ak){e.target.disabled=true;try{const {error}=await sb.rpc(ar?'reset_avatar':'dismiss_avatar_reports',{p_user:ar||ak});if(error)throw error;if(ar)AV[ar]=null;loadAvReports();drawWho()}catch(x){e.target.disabled=false;alert('Could not update: '+(x.message||'not allowed'))}return}
+$('acct').onclick=async e=>{const rg=e.target.dataset.recgo,rd=e.target.dataset.recdel;
+ if(rg){const r=MYREC.list.find(x=>x.id===rg);if(r)showRecord(r);return}
+ if(rd){if(!confirm('Delete this recorded clean? It will be taken off your totals and off the map.'))return;try{await db.doc('clean_records/'+rd).delete();const r=MYREC.list.find(x=>x.id===rd);if(r){MYREC.minutes-=+r.minutes||0;MYREC.bags-=+r.bags||0;MYREC.list=MYREC.list.filter(x=>x.id!==rd)}CLEANS=CLEANS.filter(x=>x.id!==rd);drawAcct();render()}catch(x){alert('Could not delete: '+(x.message||'not allowed'))}return}
+ const ar=e.target.dataset.avreset,ak=e.target.dataset.avkeep;if(ar||ak){e.target.disabled=true;try{const {error}=await sb.rpc(ar?'reset_avatar':'dismiss_avatar_reports',{p_user:ar||ak});if(error)throw error;if(ar)AV[ar]=null;loadAvReports();drawWho()}catch(x){e.target.disabled=false;alert('Could not update: '+(x.message||'not allowed'))}return}
  const ap=e.target.dataset.apst,rj=e.target.dataset.rjst;if(ap||rj){e.target.disabled=true;try{const {error}=await sb.rpc(ap?'approve_strike':'reject_strike',{pid:+(ap||rj)});if(error)throw error;loadStrikes()}catch(x){e.target.disabled=false;alert('Could not update: '+(x.message||'not allowed'))}return}
  const rs=e.target.dataset.rmstrike;if(rs){if(!confirm('Remove this strike?'))return;try{const {error}=await sb.from('strikes').delete().eq('id',rs);if(error)throw error;loadStrikes()}catch(x){alert('Could not remove: '+(x.message||'not allowed'))}return}
  const dr=e.target.dataset.delrep;if(dr){if(!confirm('Delete this report? It will be removed from the map and its photos deleted.'))return;try{await deleteReport(dr);drawAcct();render()}catch(x){alert('Could not delete: '+(x.message||'not allowed'))}return}
@@ -566,6 +637,7 @@ function makeAssets(client){return{async upload(blob,reportId){const me=(sbUser&
  db.collection('events').onSnapshot(q=>{events=q.docs.map(d=>d.data());drawEv();loadDetailsSoon()},{filter:q=>q.gt('when',Date.now()-2*864e5)});
  db.collection('news').onSnapshot(q=>{POSTS=q.docs.map(d=>d.data());drawStories()},{order:'t',limit:60});
  db.collection('donations').onSnapshot(q=>{DONS=q.docs.map(d=>d.data());drawRaised()});
+ db.collection('clean_records').onSnapshot(q=>{CLEANS=q.docs.map(d=>d.data());render()},{filter:q=>q.gt('t',Date.now()-90*864e5),order:'t',limit:400});  // cleaned areas from the last 90 days
  loadVolunteers();setInterval(loadVolunteers,60000);
  loadNotices();try{sb.channel('jsn-notices').on('postgres_changes',{event:'*',schema:'public',table:'notices'},()=>loadNotices()).subscribe()}catch(e){}
  if(sbUser){const saved=JSON.parse(localStorage.getItem('jsn_acct')||'null');if(saved?.code)await setAcct(saved.name||'Volunteer',saved.code,false)}
