@@ -8,7 +8,7 @@
 <meta name="twitter:card" content="summary">
 
 <link rel="icon" type="image/png" href="logo.png">
-<link rel="stylesheet" href="style.css?v=64"></head><body>
+<link rel="stylesheet" href="style.css?v=65"></head><body>
 <header><img id="logo" src="logo.png" alt="JSN logo"><h1>JSN</h1><span style="flex:1"></span>
 <nav><button id="t1" class="on">Map</button><button id="t2">Community cleans</button><button id="t3">Good news</button><button id="t4">Donate</button><button id="t5">Information</button><button id="t6">My stats</button></nav><span id="who" class="mute" style="color:#cfeee2"></span></header>
 
@@ -17,7 +17,7 @@
 <div id="mapwrap"><div id="tiles"></div><svg id="ov"></svg>
 <div id="sb"><input id="q" placeholder="Search address or postcode"><button id="loc" title="Go to my location" aria-label="Go to my location">◎</button></div>
 <div class="ctl"><button id="zi">+</button><button id="zo">−</button></div>
-<div id="attr">© OpenStreetMap contributors</div><div id="pop" class="hide"></div><div id="recbar" class="hide"><span id="recn">Tap around the edge of the area you cleaned</span><button class="s" id="recundo">Undo</button><button class="s" id="reclear">Clear</button><button class="p" id="recdone">Done</button></div></div>
+<div id="attr">© OpenStreetMap contributors</div><div id="pop" class="hide"></div><div id="recbar" class="hide"><span id="recn">Tap around the edge of the area you cleaned</span><button class="s" id="recundo">Undo</button><button class="s" id="reclear">Clear</button><button class="p" id="recdone">Done</button><button class="s hide" id="reccancel">Cancel</button></div></div>
 <div class="card" style="margin-top:12px">
 <p style="margin:0;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:15px"><span><i class="dot" style="background:#f08a24"></i>Needs cleaning</span><span><i class="dot" style="background:#d62828"></i>Hazard – don’t touch</span><span><i class="dot" style="background:#2e9e5b"></i>Cleaned</span><span class="mute" style="font-size:15px">Tap the map to report litter.</span></p><input type="file" id="cleanphoto" accept="image/*" class="hide"></div>
 </section>
@@ -33,7 +33,6 @@
 <label>Time spent cleaning</label>
 <div class="ir" style="grid-template-columns:1fr 1fr"><div><input id="crh" type="number" min="0" max="12" value="0" inputmode="numeric" aria-label="Hours"><span class="mute">hours</span></div><div><input id="crm" type="number" min="0" max="59" value="30" inputmode="numeric" aria-label="Minutes"><span class="mute">minutes</span></div></div>
 <label for="crb">Bin bags filled</label><input id="crb" type="number" min="0" max="500" value="1" inputmode="numeric">
-<div id="crevwrap" class="hide"><label for="crev">Was this a community clean you organised?</label><select id="crev" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0b1d12;color:inherit;font:inherit"></select><div class="mute" style="font-size:12px;margin-top:4px">Everyone who RSVPed gets “community clean joined” on My stats, with the group’s total time and bags.</div></div>
 <label>Area you cleaned</label><div id="crarea" class="mute">Not highlighted yet.</div>
 <button class="s" id="crdraw" style="margin-top:6px">Highlight the area on the map</button>
 <button class="p" id="crgo">Save my clean</button><div id="crmsg" class="mute" style="margin-top:6px"></div></div>
@@ -74,5 +73,5 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>window.supabase||document.write('<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"><\/script>')</script>
 <!-- ?v= numbers make browsers fetch the new version after an update; bump them each time you change these files -->
-<script src="config.js?v=64"></script>
-<script src="app.js?v=64"></script></body></html>
+<script src="config.js?v=65"></script>
+<script src="app.js?v=65"></script></body></html>
