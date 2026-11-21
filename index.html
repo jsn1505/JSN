@@ -2,9 +2,13 @@
 <html lang="en-GB"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>JSN – Clean UK Map</title>
+<meta property="og:title" content="JSN – join a community clean">
+<meta property="og:description" content="Report litter, join community cleans and meet people near you. Free, no email needed.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
 
 <link rel="icon" type="image/png" href="logo.png">
-<link rel="stylesheet" href="style.css?v=61"></head><body>
+<link rel="stylesheet" href="style.css?v=64"></head><body>
 <header><img id="logo" src="logo.png" alt="JSN logo"><h1>JSN</h1><span style="flex:1"></span>
 <nav><button id="t1" class="on">Map</button><button id="t2">Community cleans</button><button id="t3">Good news</button><button id="t4">Donate</button><button id="t5">Information</button><button id="t6">My stats</button></nav><span id="who" class="mute" style="color:#cfeee2"></span></header>
 
@@ -29,6 +33,7 @@
 <label>Time spent cleaning</label>
 <div class="ir" style="grid-template-columns:1fr 1fr"><div><input id="crh" type="number" min="0" max="12" value="0" inputmode="numeric" aria-label="Hours"><span class="mute">hours</span></div><div><input id="crm" type="number" min="0" max="59" value="30" inputmode="numeric" aria-label="Minutes"><span class="mute">minutes</span></div></div>
 <label for="crb">Bin bags filled</label><input id="crb" type="number" min="0" max="500" value="1" inputmode="numeric">
+<div id="crevwrap" class="hide"><label for="crev">Was this a community clean you organised?</label><select id="crev" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0b1d12;color:inherit;font:inherit"></select><div class="mute" style="font-size:12px;margin-top:4px">Everyone who RSVPed gets “community clean joined” on My stats, with the group’s total time and bags.</div></div>
 <label>Area you cleaned</label><div id="crarea" class="mute">Not highlighted yet.</div>
 <button class="s" id="crdraw" style="margin-top:6px">Highlight the area on the map</button>
 <button class="p" id="crgo">Save my clean</button><div id="crmsg" class="mute" style="margin-top:6px"></div></div>
@@ -69,5 +74,5 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>window.supabase||document.write('<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"><\/script>')</script>
 <!-- ?v= numbers make browsers fetch the new version after an update; bump them each time you change these files -->
-<script src="config.js?v=61"></script>
-<script src="app.js?v=61"></script></body></html>
+<script src="config.js?v=64"></script>
+<script src="app.js?v=64"></script></body></html>
