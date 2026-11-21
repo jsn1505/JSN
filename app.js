@@ -177,7 +177,7 @@ function evWhen(){const d=+$('edd').value,m=+$('edm').value,y=+$('edy').value,h=
 (function setupDatePicker(){const op=(v,l)=>`<option value="${v}">${l}</option>`,p2=n=>String(n).padStart(2,'0'),now=new Date(),tm=new Date(now.getTime()+864e5);
  $('edd').innerHTML=Array.from({length:31},(_,i)=>op(i+1,i+1)).join('');$('edm').innerHTML=MONTHS.map((n,i)=>op(i,n)).join('');
  $('edy').innerHTML=[now.getFullYear(),now.getFullYear()+1].map(y=>op(y,y)).join('');
- $('eth').innerHTML=Array.from({length:24},(_,i)=>op(i,p2(i))).join('');$('etm').innerHTML=[0,15,30,45].map(m=>op(m,p2(m))).join('');
+ $('eth').innerHTML=Array.from({length:24},(_,i)=>op(i,p2(i))).join('');$('etm').innerHTML=Array.from({length:60},(_,i)=>op(i,p2(i))).join('');
  $('edd').value=tm.getDate();$('edm').value=tm.getMonth();$('edy').value=tm.getFullYear();$('eth').value=10;$('etm').value=0})();
 // ---- cooldowns: stop buttons being spammed. cool(name, seconds, messageElement) -> true if allowed ----
 const cool=(k,sec,el)=>{let T={};try{T=JSON.parse(localStorage.getItem('jsn_cool')||'{}')}catch(e){}const now=Date.now(),left=(T[k]||0)-now;
