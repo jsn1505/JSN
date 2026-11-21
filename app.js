@@ -299,20 +299,34 @@ $('crgo').onclick=async()=>{const m=$('crmsg'),say=x=>{m.textContent=x};
  if(polyArea(REC.pts)>5e6)return say('That area is very big – please highlight just the part you cleaned (up to 5 km²).');
  if(!db)return say('Can’t save right now (not connected).');
  if(!cool('rec',30,m))return;
- const rec={id:Date.now()+'_'+localId,user_id:acct.id,minutes:min,bags,area:JSON.stringify(REC.pts.map(q=>[+q[0].toFixed(5),+q[1].toFixed(5)])),t:Date.now()};
+ const evId=($('crev')&&$('crev').value)||'',evo=evId?events.find(x=>x.id===evId&&x.by===acct.id):null;if(evId&&!evo)return say('That community clean isn’t available to record any more.');
+ const rec={id:Date.now()+'_'+localId,user_id:acct.id,minutes:min,bags,area:JSON.stringify(REC.pts.map(q=>[+q[0].toFixed(5),+q[1].toFixed(5)])),t:Date.now()};if(evo){rec.ev=evo.id;rec.ev_title=String(evo.title||'').slice(0,100)}
  $('crgo').disabled=true;say('Saving…');
  try{await db.doc('clean_records/'+rec.id).set(rec);
   if(MYREC.id===acct.id&&MYREC.ok){MYREC.minutes+=min;MYREC.bags+=bags;MYREC.list.unshift(rec)}
   if(!CLEANS.some(x=>x.id===rec.id))CLEANS.push(rec);
-  REC={on:false,pts:[]};$('crh').value=0;$('crm').value=30;$('crb').value=1;recUI();render();drawAcct();
+  REC={on:false,pts:[]};$('crh').value=0;$('crm').value=30;$('crb').value=1;MYJ.t=0;fillRecEv();drawEv();recUI();render();drawAcct();
   say(`Recorded – thank you! ${fmtDur(min)} and ${bags} bag${bags===1?'':'s'} added to your stats.`)}
- catch(x){uncool('rec');say(/relation|does not exist|schema cache|clean_records/i.test(x.message||'')?'Recording cleans needs a one-off database update first – tell Jo.':'Could not save: '+(x.message||'error'))}
+ catch(x){uncool('rec');say(/duplicate|unique|23505/i.test(x.message||'')?'That community clean has already been recorded.':/relation|does not exist|schema cache|clean_records/i.test(x.message||'')?'Recording cleans needs a one-off database update first – tell Jo.':'Could not save: '+(x.message||'error'))}
  $('crgo').disabled=false};
 // totals for My stats (counted from this person's own records)
 async function loadMyRecords(){const id=acct&&acct.id;if(!sbReady()||!id||MYREC.id===id||Date.now()<MYRECWAIT)return;MYREC={id,minutes:0,bags:0,list:[],ok:false};
  try{let all=[];for(let from=0;from<10000;from+=1000){const {data,error}=await sb.from('clean_records').select('id,minutes,bags,area,t').eq('user_id',id).order('t',{ascending:false}).range(from,from+999);if(error)throw error;all=all.concat(data||[]);if(!data||data.length<1000)break}
   MYREC={id,minutes:all.reduce((a,r)=>a+(+r.minutes||0),0),bags:all.reduce((a,r)=>a+(+r.bags||0),0),list:all,ok:true};drawAcct()}
  catch(e){MYREC.id=null;MYRECWAIT=Date.now()+30000}}
+// community cleans: organiser records the group's result; everyone who RSVPed gets it on My stats
+function fillRecEv(){const s=$('crev'),w=$('crevwrap');if(!s||!w)return;const now=Date.now();
+ const L=(acct?events.filter(e=>e.by===acct.id&&e.when<now&&e.when>now-30*864e5&&!(CLEANS||[]).some(x=>x.ev===e.id)):[]).sort((x,y)=>y.when-x.when);
+ const cur=s.value;w.classList.toggle('hide',!L.length);
+ s.innerHTML='<option value="">No – just my own clean</option>'+L.map(e=>`<option value="${esc(e.id)}">${esc(e.title)} – ${new Date(e.when).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</option>`).join('');
+ if(L.some(e=>e.id===cur))s.value=cur}
+var MYJ={id:null,list:[],ok:false,t:0},MYJWAIT=0;
+async function loadMyJoined(){const id=acct&&acct.id;if(!sbReady()||!id||Date.now()<MYJWAIT||(MYJ.id===id&&Date.now()-MYJ.t<60000))return;MYJ.id=id;MYJ.t=Date.now();
+ try{const mine=await sb.from('rsvps').select('ev').eq('by_user',id).limit(2000);if(mine.error)throw mine.error;
+  const ids=[...new Set((mine.data||[]).map(r=>r.ev))];let recs=[];
+  for(let i=0;i<ids.length;i+=60){const {data,error}=await sb.from('clean_records').select('id,ev,ev_title,minutes,bags,area,t').in('ev',ids.slice(i,i+60));if(error)throw error;recs=recs.concat(data||[])}
+  recs.sort((x,y)=>y.t-x.t);MYJ={id,list:recs,ok:true,t:Date.now()};drawAcct()}
+ catch(e){MYJ={id:null,list:[],ok:false,t:0};MYJWAIT=Date.now()+30000}}
 // zoom the map to a recorded area
 function showRecord(r){const p=parseArea(r.area);if(!p)return;$('t1').click();
  const la=p.map(q=>q[0]),lo=p.map(q=>q[1]),cla=(Math.min(...la)+Math.max(...la))/2,clo=(Math.min(...lo)+Math.max(...lo))/2,
@@ -349,13 +363,17 @@ function drawNotif(){const t2=$('t2');if(!t2)return;const onTab=!$('v2').classLi
  $('nlist').innerHTML=N+(L.length?L.slice(0,20).map(r=>{const n=NEWRS.has(r.id);return `<div class="note${n?' new':''}">${n?'<span class="pill">New</span> ':''}<span data-av="${esc(r.by)}" tabindex="0" role="button" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;vertical-align:middle">${charSVG(AV[r.by],34)}<b>${esc(NAMES[r.by]||'Someone')}</b></span> is going to <b>${esc(r.e?r.e.title:'your clean')}</b> <span class="mute">· ${ago(r.t)}</span></div>`}).join(''):(myEvIds().size?`<p class="mute">No RSVPs yet. When people sign up to your cleans you'll see them here, and a number appears on the Community cleans tab.</p>`:''))}
 $('nlist').onclick=async e=>{const id=e.target.dataset.dn;if(!id)return;NOTICES=NOTICES.filter(n=>n.id!==id);drawNotif();try{if(sb)await sb.from('notices').delete().eq('id',id)}catch(x){}};
 let EVSHOW=30;
-function drawEv(){const now=Date.now(),all=allEv().filter(e=>e.when>now-864e5).sort((a,b)=>a.when-b.when),l=all.slice(0,EVSHOW);
+// result of a group clean on its card, or the organiser's "Record this clean" button once it has started
+function evResult(e){try{const r=(CLEANS||[]).find(x=>x.ev===e.id);
+ if(r)return `<div class="mute" style="margin-top:4px"><b style="color:var(--acc)">Cleaned</b> · ${fmtDur(r.minutes)} · ${+r.bags||0} bag${+r.bags===1?'':'s'} collected by the group</div>`;
+ return acct&&e.by===acct.id&&e.when<Date.now()?`<div style="margin-top:6px"><span class="mute">Finished – </span><button class="s" data-recev="${esc(e.id)}">Record this clean</button></div>`:''}catch(x){return ''}}
+function drawEv(){const now=Date.now(),all=allEv().filter(e=>e.when>now-864e5||(acct&&e.by===acct.id&&e.when>now-7*864e5&&!(CLEANS||[]).some(x=>x.ev===e.id))).sort((a,b)=>a.when-b.when),l=all.slice(0,EVSHOW);
  $('evs').innerHTML=l.length?l.map(e=>{const d=new Date(e.when),going=rsvpOf(e).includes(myId());
-  return `<div class="ev"><div class="date"><b>${d.getDate()}</b>${d.toLocaleString('en-GB',{month:'short'})}</div><div style="flex:1"><b>${esc(e.title)}</b><br><span class="mute">${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} · ${esc(e.loc)} · ${rsvpOf(e).length} going</span>${e.descr?`<div style="margin-top:4px">${esc(e.descr)}</div>`:''}${(()=>{const dt=DETAILS[e.id];if(dt){const ll=dt.lat!=null&&dt.lon!=null;return `<div class="meet">📍 <b>Meeting point:</b> ${esc(dt.exact)}${ll?` · <a href="https://www.openstreetmap.org/?mlat=${+dt.lat}&mlon=${+dt.lon}#map=18/${+dt.lat}/${+dt.lon}" target="_blank" rel="noopener">open map</a>`:''}${dt.contact?`<br><b>Finding the organiser:</b> ${esc(dt.contact)}`:''}</div>`}return e.demo?'':'<div class="mute" style="margin-top:4px">🔒 The exact meeting point is shown once you RSVP.</div>'})()}${acct&&e.by===acct.id?`<div class="mute" style="margin-top:4px"><b style="color:var(--acc)">Your clean</b> · Going: ${rsvpOf(e).filter(x=>x!==acct.id).map(x=>`<span data-av="${esc(x)}" tabindex="0" role="button" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin:3px 12px 3px 0">${charSVG(AV[x],36)}${esc(NAMES[x]||'Volunteer')}</span>`).join('')||'no one yet'}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><button class="p" style="margin:0" data-id="${esc(e.id)}">${going?'Cancel RSVP':'RSVP'}</button>${acct&&e.by===acct.id?`<button class="s" data-cancel="${esc(e.id)}">Cancel clean</button>`:''}</div></div>`}).join('')+(all.length>l.length?`<button class="s" data-more="1" style="width:100%;margin-top:8px">Show more cleans (${all.length-l.length} more)</button>`:''):'No cleans planned yet – create one!';drawReq();drawNotif()}
+  return `<div class="ev"><div class="date"><b>${d.getDate()}</b>${d.toLocaleString('en-GB',{month:'short'})}</div><div style="flex:1"><b>${esc(e.title)}</b><br><span class="mute">${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} · ${esc(e.loc)} · ${rsvpOf(e).length} going</span>${e.descr?`<div style="margin-top:4px">${esc(e.descr)}</div>`:''}${evResult(e)}${(()=>{const dt=DETAILS[e.id];if(dt){const ll=dt.lat!=null&&dt.lon!=null;return `<div class="meet">📍 <b>Meeting point:</b> ${esc(dt.exact)}${ll?` · <a href="https://www.openstreetmap.org/?mlat=${+dt.lat}&mlon=${+dt.lon}#map=18/${+dt.lat}/${+dt.lon}" target="_blank" rel="noopener">open map</a>`:''}${dt.contact?`<br><b>Finding the organiser:</b> ${esc(dt.contact)}`:''}</div>`}return e.demo?'':'<div class="mute" style="margin-top:4px">🔒 The exact meeting point is shown once you RSVP.</div>'})()}${acct&&e.by===acct.id?`<div class="mute" style="margin-top:4px"><b style="color:var(--acc)">Your clean</b> · Going: ${rsvpOf(e).filter(x=>x!==acct.id).map(x=>`<span data-av="${esc(x)}" tabindex="0" role="button" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin:3px 12px 3px 0">${charSVG(AV[x],36)}${esc(NAMES[x]||'Volunteer')}</span>`).join('')||'no one yet'}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><button class="p" style="margin:0" data-id="${esc(e.id)}">${going?'Cancel RSVP':'RSVP'}</button>${acct&&e.by===acct.id?`<button class="s" data-share="${esc(e.id)}">Share link</button><button class="s" data-cancel="${esc(e.id)}">Cancel clean</button>`:''}</div></div>`}).join('')+(all.length>l.length?`<button class="s" data-more="1" style="width:100%;margin-top:8px">Show more cleans (${all.length-l.length} more)</button>`:''):'No cleans planned yet – create one!';drawReq();drawNotif()}
 async function cancelClean(id,ask=true){const ev=allEv().find(x=>x.id===id);if(!ev)return;
  if(ask&&!confirm(`Cancel "${ev.title}" for everyone? It will be removed from Upcoming cleans. This can't be undone.`))return;
  try{if(db&&!ev.demo)await db.doc('events/'+id).delete();events=events.filter(x=>x.id!==id);RS=RS.filter(r=>r.ev!==id);drawEv();$('emsg').textContent=`"${ev.title}" has been cancelled.`}catch(x){$('emsg').textContent='Could not cancel the clean: '+(x.message||'not allowed')}}
-$('evs').onclick=async e=>{if(e.target.dataset.more){EVSHOW+=30;drawEv();return}if(e.target.dataset.cancel)return cancelClean(e.target.dataset.cancel);const id=e.target.dataset.id;if(!id)return;if(!acct){$('emsg').textContent='Sign in on the My stats tab to RSVP.';return}const ev=allEv().find(x=>x.id===id),me=myId(),going=rsvpOf(ev).includes(me),key='rsvps/'+id+'_'+me;
+$('evs').onclick=async e=>{if(e.target.dataset.recev){$('t1').click();const s=$('crev');if(s){fillRecEv();s.value=e.target.dataset.recev}$('reccard').scrollIntoView({block:'start',behavior:'smooth'});return}if(e.target.dataset.share)return shareClean(e.target.dataset.share);if(e.target.dataset.more){EVSHOW+=30;drawEv();return}if(e.target.dataset.cancel)return cancelClean(e.target.dataset.cancel);const id=e.target.dataset.id;if(!id)return;if(!acct){$('emsg').textContent='Sign in on the My stats tab to RSVP.';return}const ev=allEv().find(x=>x.id===id),me=myId(),going=rsvpOf(ev).includes(me),key='rsvps/'+id+'_'+me;
  if(!cool('rsvp_'+id,5,$('emsg')))return;
  if(going&&acct&&ev.by===acct.id&&confirm(`You organised "${ev.title}".\n\nDo you want to cancel the whole clean for everyone?\n\nOK – cancel the clean\nCancel – just remove your own RSVP`))return cancelClean(id,false);
  if(ev.demo||!db){ev.rsvp=going?rsvpOf(ev).filter(x=>x!==me):[...rsvpOf(ev),me];RS=RS.filter(x=>!(x.ev===id&&x.by===me));drawEv();return}
@@ -485,14 +503,14 @@ let NAMEMSG='';
 async function createAccount(name){needSb();name=(name||'').trim();if(!name)throw new Error('Pick a nickname first.');if(name.length>20)throw new Error('Nicknames can be up to 20 characters.');if(await nameTaken(name))throw new Error('That nickname is already taken – please choose another one.');const code=newCode(),email=await authEmail(code);const {data,error}=await sb.auth.signUp({email,password:code});if(error)throw new Error(/invalid|domain/i.test(error.message)?'Supabase rejected the placeholder email address – see README_SUPABASE.md, Troubleshooting.':error.message);if(!data.user||!data.session)throw new Error('Account creation needs "Confirm email" switched OFF in Supabase (Authentication > Providers > Email).');await finishAcct(name,code,true);showCode=true}
 async function signInAccount(name,code){needSb();const clean=fmt(code),raw=clean.replace(/-/g,'');if(!(raw.length===16&&[...raw].every(x=>AL.includes(x))&&chk(raw.slice(0,15))===raw[15]))throw new Error('That code doesn\'t look right – check for typos.');const email=await authEmail(clean);const {error}=await sb.auth.signInWithPassword({email,password:clean});if(error)throw error;const {data:ss}=await sb.auth.getSession();const {data:pp}=await sb.from('profiles').select('name').eq('id',ss.session.user.id).maybeSingle();await finishAcct(name||pp?.name||'Volunteer',clean,true);showCode=false}
 async function setAcct(name,code,save){if(!sb)return;try{const email=await authEmail(code);const {error}=await sb.auth.signInWithPassword({email,password:fmt(code)});if(error)throw error;await finishAcct(name,code,save)}catch(e){console.warn('Saved account could not be restored',e)}}
-function drawAcct(){drawAcctInner();const el=$('acct');if(el&&NAMEMSG){el.insertAdjacentHTML('afterbegin',`<div class="card" style="border-color:var(--acc)">${esc(NAMEMSG)}</div>`);NAMEMSG=''}if(el&&acct&&isAdmin&&!$('slist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Strikes <span class="mute">(only admins can see this)</span></h2><p class="mute">When someone taps “Not actually cleaned”, it waits here for you. A strike is only given if you approve it. 5 approved strikes blocks the account.</p><div id="slist" class="mute">Loading…</div></div>');loadStrikes()}if(el&&acct&&isAdmin&&!$('avrlist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Reported characters <span class="mute">(only admins can see this)</span></h2><p class="mute">Tap Reset to wipe a drawing that isn’t appropriate (they can draw a new one), or Dismiss to ignore the reports.</p><div id="avrlist" class="mute">Loading…</div></div>');loadAvReports()}}
-function drawAcctInner(){const el=$('acct');if(!el)return;setTimeout(drawNotif);drawWho();if(acct){setTimeout(loadMyStill);setTimeout(loadMyAvatar);setTimeout(loadMyRecords)}
+function drawAcct(){drawAcctInner();fillRecEv();const el=$('acct');if(el&&NAMEMSG){el.insertAdjacentHTML('afterbegin',`<div class="card" style="border-color:var(--acc)">${esc(NAMEMSG)}</div>`);NAMEMSG=''}if(el&&acct&&isAdmin&&!$('slist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Strikes <span class="mute">(only admins can see this)</span></h2><p class="mute">When someone taps “Not actually cleaned”, it waits here for you. A strike is only given if you approve it. 5 approved strikes blocks the account.</p><div id="slist" class="mute">Loading…</div></div>');loadStrikes()}if(el&&acct&&isAdmin&&!$('avrlist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Reported characters <span class="mute">(only admins can see this)</span></h2><p class="mute">Tap Reset to wipe a drawing that isn’t appropriate (they can draw a new one), or Dismiss to ignore the reports.</p><div id="avrlist" class="mute">Loading…</div></div>');loadAvReports()}}
+function drawAcctInner(){const el=$('acct');if(!el)return;setTimeout(drawNotif);drawWho();if(acct){setTimeout(loadMyStill);setTimeout(loadMyAvatar);setTimeout(loadMyRecords);setTimeout(loadMyJoined)}
  if(!acct){el.innerHTML=`<div class="card"><h2>Create your account</h2><p>No email or password is required. Pick a nickname and you'll get a recovery code. The code is used as your account password behind the scenes.</p><label>Nickname</label><input id="anick" maxlength="20" placeholder="e.g. RiverRanger"><button class="p" data-a="create">Create account</button><div id="cmsg" class="mute" style="margin-top:6px"></div></div><div class="card"><h2>Already have a code?</h2><label>Recovery code</label><input id="acode" placeholder="XXXX-XXXX-XXXX-XXXX"><label>Nickname (optional)</label><input id="anick2" maxlength="20"><button class="p" data-a="signin">Sign in</button><div id="amsg" class="mute" style="margin-top:6px"></div></div>`;return}
  const id=acct.id,mine=reports.filter(r=>r.by===id).sort((a,b)=>b.t-a.t),done=reports.filter(r=>r.cleaned&&r.cleanedBy===id).length,still=MYSTILL.id===id?MYSTILL.n:'…',joined=allEv().filter(e=>rsvpOf(e).includes(id)).length;
  el.innerHTML=`<div class="card"><h2>${esc(acct.name)}</h2><p class="mute">Your recovery code is the only way to get this account back on another device. Keep it private – anyone who has it can act as you.</p>${showCode?'<p style="color:#ffd27a"><b>Save this code now.</b> It is the only way to sign back in and we cannot show it again if you lose it.</p>':''}<div style="font:700 22px 'Atkinson Hyperlegible',system-ui,sans-serif;letter-spacing:2px;margin:8px 0">${showCode?acct.code:'••••-••••-••••-••••'}</div><button class="s" data-a="show">${showCode?'Hide':'Show'} code</button> <button class="s" data-a="copy">Copy</button> <button class="s" data-a="out">Sign out</button><div id="amsg" class="mute" style="margin-top:6px"></div></div>
 <div class="card"><h2>Your character</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${charSVG(AV[id],130,'Your character')}<div style="flex:1;min-width:160px"><p class="mute" style="margin:0 0 8px">This is you on JSN. It shows next to your name on Good news posts and in the lists on Community cleans.</p><button class="p" data-a="avatar" style="margin:0">${AV[id]?'Change my character':'Draw my character'}</button></div></div></div>
-<div class="card"><h2>Your stats</h2><div class="g">${[[MYREC.ok&&MYREC.id===id?fmtDur(MYREC.minutes):'–','spent cleaning'],[MYREC.ok&&MYREC.id===id?MYREC.bags:'–','bags filled'],[mine.length,'reports made'],[done,'cleaned by you'],[still,'“still there” checks'],[joined,'cleans joined']].map(([n,l])=>`<div class="pr"><b class="n">${n}</b>${l}</div>`).join('')}</div></div>
-<div class="card"><h2>Your recorded cleans</h2>${MYREC.ok&&MYREC.id===id&&MYREC.list.length?MYREC.list.slice(0,8).map(r=>`<div class="rep" style="align-items:center"><div style="flex:1"><b>${fmtDur(r.minutes)}</b> · ${+r.bags||0} bag${+r.bags===1?'':'s'}<br><span class="mute">${fmtDate(r.t)}</span></div><button class="s" data-recgo="${esc(r.id)}">Show</button><button class="s" data-recdel="${esc(r.id)}">Delete</button></div>`).join(''):'<p class="mute">Nothing recorded yet – use “Record a clean” on the Map tab.</p>'}</div>
+<div class="card"><h2>Your stats</h2><div class="g">${[[MYREC.ok&&MYREC.id===id?fmtDur(MYREC.minutes):'–','spent cleaning'],[MYREC.ok&&MYREC.id===id?MYREC.bags:'–','bags filled'],[mine.length,'reports made'],[done,'cleaned by you'],[still,'“still there” checks'],[MYJ.ok&&MYJ.id===id?MYJ.list.length:'–','community cleans joined']].map(([n,l])=>`<div class="pr"><b class="n">${n}</b>${l}</div>`).join('')}</div></div>
+<div class="card"><h2>Your recorded cleans</h2>${MYREC.ok&&MYREC.id===id&&MYREC.list.length?MYREC.list.slice(0,8).map(r=>`<div class="rep" style="align-items:center"><div style="flex:1"><b>${fmtDur(r.minutes)}</b> · ${+r.bags||0} bag${+r.bags===1?'':'s'}<br><span class="mute">${fmtDate(r.t)}</span></div><button class="s" data-recgo="${esc(r.id)}">Show</button><button class="s" data-recdel="${esc(r.id)}">Delete</button></div>`).join(''):'<p class="mute">Nothing recorded yet – use “Record a clean” on the Map tab.</p>'}</div><div class="card"><h2>Community cleans you’ve joined</h2>${MYJ.ok&&MYJ.id===id&&MYJ.list.length?MYJ.list.slice(0,10).map(r=>`<div class="rep" style="align-items:center"><div style="flex:1"><b>${esc(r.ev_title||'Community clean')}</b> <span class="pill">+1</span><br><span class="mute">${fmtDate(r.t)} · Group total: ${fmtDur(r.minutes)} · ${+r.bags||0} bag${+r.bags===1?'':'s'}</span></div><button class="s" data-grgo="${esc(r.id)}">Show</button></div>`).join(''):'<p class="mute">When the organiser records a community clean you RSVPed to, it counts here, with the group’s total time and bags.</p>'}</div>
 <div class="card"><h2>Your reports</h2>${mine.length?mine.slice(0,10).map(r=>{const c=CATS[r.cat]||CATS.litter;return `<div class="rep" data-go="${r.id}" style="cursor:pointer;align-items:center"><div style="font-size:26px;flex:0 0 52px;text-align:center">${c[0]}</div><div style="flex:1"><b>${c[1]}</b> · ${r.cleaned?'✓ cleaned':'still open'}<br><span class="mute">${esc(r.note||'')}</span></div><button class="s" data-delrep="${esc(r.id)}">Delete</button></div>`}).join(''):'<p class="mute">You haven\'t reported anything yet.</p>'}</div>`}
 // ---- strikes: given automatically when someone taps "Not actually cleaned"; 5 strikes blocks an account ----
 async function loadStrikes(){const el=$('slist');if(!el||!sb)return;try{
@@ -516,7 +534,8 @@ const photoPath=u=>{const i=(u||'').indexOf('/report-photos/');return i<0?null:d
 async function deleteReport(id){const r=byId(id);if(db){const paths=[r&&r.img,r&&r.cleanedImg].map(photoPath).filter(Boolean).flatMap(p=>[p,p.replace(/\.jpg$/,'_t.jpg')]);
  if(paths.length){const {error}=await sb.storage.from('report-photos').remove(paths);if(error)console.warn('Photo delete failed',error)}
  await db.doc('reports/'+id).delete()}real=real.filter(x=>x.id!==id)}
-$('acct').onclick=async e=>{const rg=e.target.dataset.recgo,rd=e.target.dataset.recdel;
+$('acct').onclick=async e=>{const rg=e.target.dataset.recgo,rd=e.target.dataset.recdel,gg=e.target.dataset.grgo;
+ if(gg){const r=MYJ.list.find(x=>x.id===gg);if(r)showRecord(r);return}
  if(rg){const r=MYREC.list.find(x=>x.id===rg);if(r)showRecord(r);return}
  if(rd){if(!confirm('Delete this recorded clean? It will be taken off your totals and off the map.'))return;try{await db.doc('clean_records/'+rd).delete();const r=MYREC.list.find(x=>x.id===rd);if(r){MYREC.minutes-=+r.minutes||0;MYREC.bags-=+r.bags||0;MYREC.list=MYREC.list.filter(x=>x.id!==rd)}CLEANS=CLEANS.filter(x=>x.id!==rd);drawAcct();render()}catch(x){alert('Could not delete: '+(x.message||'not allowed'))}return}
  const ar=e.target.dataset.avreset,ak=e.target.dataset.avkeep;if(ar||ak){e.target.disabled=true;try{const {error}=await sb.rpc(ar?'reset_avatar':'dismiss_avatar_reports',{p_user:ar||ak});if(error)throw error;if(ar)AV[ar]=null;loadAvReports();drawWho()}catch(x){e.target.disabled=false;alert('Could not update: '+(x.message||'not allowed'))}return}
@@ -525,7 +544,7 @@ $('acct').onclick=async e=>{const rg=e.target.dataset.recgo,rd=e.target.dataset.
  const dr=e.target.dataset.delrep;if(dr){if(!confirm('Delete this report? It will be removed from the map and its photos deleted.'))return;try{await deleteReport(dr);drawAcct();render()}catch(x){alert('Could not delete: '+(x.message||'not allowed'))}return}
  const a=e.target.dataset.a,g=e.target.closest('[data-go]');
  if(g){const r=byId(g.dataset.go);if(r){$('t1').click();sel=r.id;setView(r.lon,r.lat,Math.max(V.z,15));drawPop()}return}
- try{if(a==='avatar'){openAvatarEditor(false);return}if(a==='create'){await createAccount($('anick').value);drawAcct();TOUR_WAIT=!tourDone();openAvatarEditor(true)}
+ try{if(a==='avatar'){openAvatarEditor(false);return}if(a==='create'){await createAccount($('anick').value);drawAcct();TOUR_WAIT=!tourDone()&&!PENDJOIN;if(PENDJOIN){const jid=PENDJOIN;PENDJOIN=null;autoRsvp(jid)}openAvatarEditor(true)}
  if(a==='signin'){await signInAccount($('anick2').value.trim(),$('acode').value);drawAcct()}
  if(a==='show'){showCode=!showCode;drawAcct()}
  if(a==='copy'){try{await navigator.clipboard.writeText(acct.code);$('amsg').textContent='Copied.'}catch(x){$('amsg').textContent='Could not copy – select the code and copy it.'}}
@@ -634,10 +653,10 @@ function makeAssets(client){return{async upload(blob,reportId){const me=(sbUser&
  // map only needs open spots, spots cleaned in the last 2 weeks, and the signed-in person's own reports/cleans
  const repFilter=q=>{const me=sbUser&&sbUser.id,c=['cleaned.eq.false','cleaned_t.gt.'+(Date.now()-14*864e5)];if(me)c.push('by_user.eq.'+me,'cleaned_by.eq.'+me);return q.or(c.join(','))};
  REPSUB=db.collection('reports').onSnapshot(q=>{real=q.docs.map(d=>d.data()).filter(validRep);render();drawPop()},{filter:repFilter});
- db.collection('events').onSnapshot(q=>{events=q.docs.map(d=>d.data());drawEv();loadDetailsSoon()},{filter:q=>q.gt('when',Date.now()-2*864e5)});
+ db.collection('events').onSnapshot(q=>{events=q.docs.map(d=>d.data());drawEv();fillRecEv();loadDetailsSoon()},{filter:q=>q.gt('when',Date.now()-30*864e5)});
  db.collection('news').onSnapshot(q=>{POSTS=q.docs.map(d=>d.data());drawStories()},{order:'t',limit:60});
  db.collection('donations').onSnapshot(q=>{DONS=q.docs.map(d=>d.data());drawRaised()});
- db.collection('clean_records').onSnapshot(q=>{CLEANS=q.docs.map(d=>d.data());render()},{filter:q=>q.gt('t',Date.now()-90*864e5),order:'t',limit:400});  // cleaned areas from the last 90 days
+ db.collection('clean_records').onSnapshot(q=>{CLEANS=q.docs.map(d=>d.data());render();fillRecEv();drawEv()},{filter:q=>q.gt('t',Date.now()-90*864e5),order:'t',limit:400});  // cleaned areas from the last 90 days
  loadVolunteers();setInterval(loadVolunteers,60000);
  loadNewMembers();setInterval(loadNewMembers,120000);
  loadNotices();try{sb.channel('jsn-notices').on('postgres_changes',{event:'*',schema:'public',table:'notices'},()=>loadNotices()).subscribe()}catch(e){}
@@ -681,7 +700,7 @@ function startTour(){if($('tour'))return;const m=$('modal');if(m)m.classList.add
  t.onclick=e=>{const b=e.target.closest('[data-tn]');if(!b)return;const k=b.dataset.tn;
   if(k==='skip')return endTour();if(k==='back')return tourShow(Math.max(0,TOURI-1));if(TOURI>=TOUR.length-1)return endTour();tourShow(TOURI+1)};
  window.addEventListener('resize',tourPlace);window.addEventListener('scroll',tourPlace,{passive:true});tourShow(0)}
-function modalClosed(){if(TOUR_WAIT){TOUR_WAIT=false;setTimeout(startTour,350)}}
+function modalClosed(){if(JOINAFTER){JOINAFTER=false;setTimeout(()=>{$('t2').click();window.scrollTo(0,0)},300);return}if(TOUR_WAIT){TOUR_WAIT=false;setTimeout(startTour,350)}}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('tour'))endTour()});
 if($('tourbtn'))$('tourbtn').onclick=startTour;
 
@@ -707,6 +726,40 @@ async function loadNewMembers(){if(!sbReady())return;
   NEWM=(data||[]).filter(p=>p.avatar&&p.created_at).slice(0,8);NEWM.forEach(p=>{AV[p.id]=p.avatar;NAMES[p.id]=p.name||'Volunteer'});drawWelcomeBoard()}
  catch(e){NEWM=[];drawWelcomeBoard()}}
 
+const JOINID=(()=>{try{return(new URLSearchParams(location.search).get('clean')||'').slice(0,80)}catch(e){return ''}})();
+// ---- share a community clean: organisers copy/share a link; it opens a "Join …'s clean" page ----
+var JOINAFTER=false,PENDJOIN=null;
+const cleanLink=id=>location.href.split('#')[0].split('?')[0]+'?clean='+encodeURIComponent(id);
+async function shareClean(id){const ev=allEv().find(x=>x.id===id),m=$('emsg');if(!ev)return;const url=cleanLink(id),who=acct?acct.name:'JSN',text=`Join ${who}’s community clean: ${ev.title}`;
+ try{if(navigator.share){await navigator.share({title:'JSN community clean',text,url});return}}catch(e){if(e&&e.name==='AbortError')return}
+ try{await navigator.clipboard.writeText(url);m.textContent='Link copied – paste it into a message or post to invite people.'}
+ catch(e){prompt('Copy this link to share your clean:',url)}}
+async function autoRsvp(id){try{const me=myId();if(db)await db.doc('rsvps/'+id+'_'+me).set({ev:id,by:me,t:Date.now()});loadDetailsSoon();JOINAFTER=true}catch(e){}}
+async function openJoin(id){
+ showModal('<p class="mute" style="text-align:center;margin:20px 0">Loading the clean…</p>');
+ let ev=null,org=null,n=0,saved=false;try{saved=!!localStorage.getItem('jsn_acct')}catch(e){}
+ try{for(let i=0;i<40&&!sbReady();i++)await new Promise(r=>setTimeout(r,250));
+  const {data}=await sb.from('events').select('*').eq('id',id).maybeSingle();if(data)ev=row('events',data);
+  if(ev){const pr=await sb.from('profiles').select('id,name,avatar').eq('id',ev.by).maybeSingle();org=pr.data||null;if(org){AV[org.id]=org.avatar;NAMES[org.id]=org.name}
+   const c=await sb.from('rsvps').select('*',{count:'exact',head:true}).eq('ev',id);n=c.count||0}}catch(e){}
+ for(let i=0;i<12&&saved&&!acct;i++)await new Promise(r=>setTimeout(r,250));   // wait for a saved sign-in to come back
+ const m0=$('modal');
+ if(!ev||ev.when<Date.now()-864e5){showModal(`<div style="text-align:center"><h2 style="margin-top:0">This clean isn’t available</h2><p class="mute">It may have finished or been cancelled. Have a look at what’s coming up near you.</p><button class="p" data-close data-jgo="t2" style="width:100%">See community cleans</button></div>`);
+  $('modal').querySelector('[data-jgo]').addEventListener('click',()=>setTimeout(()=>$('t2').click(),50));return}
+ const who=(org&&org.name)||'a volunteer',d=new Date(ev.when),mine=acct&&acct.id===ev.by;
+ const head=`<div style="text-align:center">${org&&org.avatar?charSVG(org.avatar,110,esc(who)+'’s character'):''}<h2 id="jt" style="margin:8px 0 2px">Join ${esc(who)}’s clean</h2><p style="margin:0 0 2px"><b>${esc(ev.title)}</b></p><p class="mute" style="margin:0 0 4px">${d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} · ${esc(ev.loc)}</p><p class="mute" style="margin:0 0 10px">${n} going</p>${ev.descr?`<p style="margin:0 0 10px">${esc(ev.descr)}</p>`:''}`;
+ const draw=(going,msg)=>{showModal(head+`<div id="jmsg" class="mute" style="min-height:20px;margin-bottom:6px">${msg||''}</div>${mine?'<p><b>This is your clean.</b> Share the link to invite people.</p>':going?'<p><b>You’re going!</b></p>':`<button class="p" id="jrsvp" style="width:100%">RSVP</button>${acct?`<p class="mute" style="margin:6px 0 0">Signed in as ${esc(acct.name)}</p>`:`<button class="s" id="jacct" style="width:100%;margin-top:8px">Create an account</button><p class="mute" style="margin:6px 0 0;font-size:12px">Free – just a nickname, no email. We’ll RSVP you straight away.</p>`}`}<p class="mute" style="margin:10px 0 0">${going||mine?'':'🔒 The exact meeting point is shown once you RSVP.'}</p><button class="s" data-close id="jlook" style="width:100%;margin-top:8px">${going||mine?'Done':'Just look around'}</button></div>`);
+  const m=$('modal');m.querySelector('.box').setAttribute('aria-labelledby','jt');
+  const lk=$('jlook');if(lk)lk.addEventListener('click',()=>setTimeout(()=>{if(going||mine)$('t2').click();else if(!acct&&!tourDone())startTour()},250));
+  const rs=$('jrsvp');if(rs)rs.onclick=async()=>{
+   if(!acct){$('jmsg').textContent='Create a free account first, so we can save your RSVP.';const b=$('jacct');if(b)b.focus();return}
+   rs.disabled=true;$('jmsg').textContent='Saving your RSVP…';
+   try{if(db)await db.doc('rsvps/'+id+'_'+acct.id).set({ev:id,by:acct.id,t:Date.now()});await loadDetails();
+    const dt=DETAILS[id];draw(true,dt?`<div class="meet" style="text-align:left">📍 <b>Meeting point:</b> ${esc(dt.exact)}${dt.contact?`<br><b>Finding the organiser:</b> ${esc(dt.contact)}`:''}</div>`:'')}
+   catch(x){rs.disabled=false;$('jmsg').textContent='Could not RSVP: '+(x.message||'error')}};
+  const ac=$('jacct');if(ac)ac.onclick=()=>{PENDJOIN=id;$('modal').classList.add('hide');$('t6').click();setTimeout(()=>{const nn=$('anick');if(nn)nn.focus()},50)}};
+ const was=!!(acct&&RS&&RS.some&&RS.some(r=>r.ev===id&&r.by===acct.id));if(acct)try{await loadDetails()}catch(e){}
+ const dt0=DETAILS[id];draw(was||!!dt0&&!mine,dt0&&!mine?`<div class="meet" style="text-align:left">📍 <b>Meeting point:</b> ${esc(dt0.exact)}${dt0.contact?`<br><b>Finding the organiser:</b> ${esc(dt0.contact)}`:''}</div>`:'')}
 // ---- welcome pop-up: shown every time the page loads ----
 function showWelcome(){let saved=null;try{saved=JSON.parse(localStorage.getItem('jsn_acct')||'null')}catch(e){}
  const step=(n,t,x)=>`<div style="display:flex;gap:10px;margin:10px 0"><b style="flex:0 0 26px;height:26px;border-radius:50%;background:var(--acc);color:#08180f;display:flex;align-items:center;justify-content:center">${n}</b><div><b>${t}</b><br><span class="mute">${x}</span></div></div>`;
@@ -725,4 +778,4 @@ ${saved?`<button class="p" data-close style="width:100%">Let’s go</button>`:
  if(!saved){const lk=m.querySelector('[data-close]');if(lk)lk.addEventListener('click',()=>setTimeout(startTour,250))}
  (m.querySelector('[data-wa=create]')||m.querySelector('[data-close]')).focus()}
 document.addEventListener('keydown',e=>{const m=$('modal');if(e.key==='Escape'&&m&&!m.classList.contains('hide'))m.classList.add('hide')});
-showWelcome();
+if(JOINID)openJoin(JOINID);else showWelcome();
