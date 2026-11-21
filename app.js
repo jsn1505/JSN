@@ -277,7 +277,7 @@ function recDraft(){const p=(REC&&REC.pts)||[];if(!p.length)return '';const q=p.
  return (p.length>=3?`<polygon points="${pts}" fill="#ffd166" fill-opacity=".28" stroke="#ffd166" stroke-width="3" stroke-dasharray="8 6" stroke-linejoin="round"/>`:`<polyline points="${pts}" fill="none" stroke="#ffd166" stroke-width="3" stroke-dasharray="8 6"/>`)
   +q.map((a,i)=>`<circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="${i?6:8}" fill="${i?'#fff':'#ffd166'}" stroke="#222" stroke-width="2"/>`).join('')}
 function recUI(){const n=REC.pts.length,txt=n>=3?`Area: ${fmtArea(polyArea(REC.pts))} (${n} points)`:'';
- if($('recbar')){$('recbar').classList.toggle('hide',!REC.on);$('recn').textContent=n?`${n} point${n===1?'':'s'}${txt?' · '+fmtArea(polyArea(REC.pts)):' – keep tapping'}`:'Tap around the edge of the area you cleaned'}
+ if($('recbar')){$('recbar').classList.toggle('hide',!REC.on);if($('reccancel'))$('reccancel').classList.toggle('hide',!GR);$('recn').textContent=n?`${n} point${n===1?'':'s'}${txt?' · '+fmtArea(polyArea(REC.pts)):' – keep tapping'}`:'Tap around the edge of the area you cleaned'}
  if($('crarea'))$('crarea').textContent=n>=3?'Area highlighted: '+txt.replace('Area: ',''):(REC.on?'Tap points around the edge on the map…':'Not highlighted yet.');
  if($('crdraw'))$('crdraw').textContent=REC.on?'Drawing on the map…':(n>=3?'Change the area':'Highlight the area on the map')}
 function recAdd(lon,lat){if(lat<49.8||lat>61||lon<-8.7||lon>2){$('crmsg').textContent='JSN covers the UK – that point is outside it.';return}
@@ -287,7 +287,8 @@ function recAdd(lon,lat){if(lat<49.8||lat>61||lon<-8.7||lon>2){$('crmsg').textCo
 $('crdraw').onclick=()=>{REC.on=true;if(REC.pts.length>=3)REC.pts=[];$('crmsg').textContent='';recUI();render();wrap.scrollIntoView({block:'center',behavior:'smooth'})};
 $('recundo').onclick=()=>{REC.pts.pop();recUI();render()};
 $('reclear').onclick=()=>{REC.pts=[];recUI();render()};
-$('recdone').onclick=()=>{if(REC.pts.length<3){$('recn').textContent='Add at least 3 points first.';return}REC.on=false;recUI();render()};
+$('recdone').onclick=()=>{if(REC.pts.length<3){$('recn').textContent='Add at least 3 points first.';return}REC.on=false;recUI();render();if(GR)openGroupRecord(GR.ev)};
+$('reccancel').onclick=()=>{REC={on:false,pts:[]};recUI();render();if(GR)openGroupRecord(GR.ev)};
 $('crgo').onclick=async()=>{const m=$('crmsg'),say=x=>{m.textContent=x};
  if(!acct)return say('Create or sign in to a My stats account to record a clean.');
  const h=Math.floor(+$('crh').value||0),mi=Math.floor(+$('crm').value||0),min=h*60+mi,bags=Math.floor(+$('crb').value||0);
@@ -299,13 +300,12 @@ $('crgo').onclick=async()=>{const m=$('crmsg'),say=x=>{m.textContent=x};
  if(polyArea(REC.pts)>5e6)return say('That area is very big – please highlight just the part you cleaned (up to 5 km²).');
  if(!db)return say('Can’t save right now (not connected).');
  if(!cool('rec',30,m))return;
- const evId=($('crev')&&$('crev').value)||'',evo=evId?events.find(x=>x.id===evId&&x.by===acct.id):null;if(evId&&!evo)return say('That community clean isn’t available to record any more.');
- const rec={id:Date.now()+'_'+localId,user_id:acct.id,minutes:min,bags,area:JSON.stringify(REC.pts.map(q=>[+q[0].toFixed(5),+q[1].toFixed(5)])),t:Date.now()};if(evo){rec.ev=evo.id;rec.ev_title=String(evo.title||'').slice(0,100)}
+ const rec={id:Date.now()+'_'+localId,user_id:acct.id,minutes:min,bags,area:JSON.stringify(REC.pts.map(q=>[+q[0].toFixed(5),+q[1].toFixed(5)])),t:Date.now()}
  $('crgo').disabled=true;say('Saving…');
  try{await db.doc('clean_records/'+rec.id).set(rec);
   if(MYREC.id===acct.id&&MYREC.ok){MYREC.minutes+=min;MYREC.bags+=bags;MYREC.list.unshift(rec)}
   if(!CLEANS.some(x=>x.id===rec.id))CLEANS.push(rec);
-  REC={on:false,pts:[]};$('crh').value=0;$('crm').value=30;$('crb').value=1;MYJ.t=0;fillRecEv();drawEv();recUI();render();drawAcct();
+  REC={on:false,pts:[]};$('crh').value=0;$('crm').value=30;$('crb').value=1;recUI();render();drawAcct();
   say(`Recorded – thank you! ${fmtDur(min)} and ${bags} bag${bags===1?'':'s'} added to your stats.`)}
  catch(x){uncool('rec');say(/duplicate|unique|23505/i.test(x.message||'')?'That community clean has already been recorded.':/relation|does not exist|schema cache|clean_records/i.test(x.message||'')?'Recording cleans needs a one-off database update first – tell Jo.':'Could not save: '+(x.message||'error'))}
  $('crgo').disabled=false};
@@ -315,11 +315,33 @@ async function loadMyRecords(){const id=acct&&acct.id;if(!sbReady()||!id||MYREC.
   MYREC={id,minutes:all.reduce((a,r)=>a+(+r.minutes||0),0),bags:all.reduce((a,r)=>a+(+r.bags||0),0),list:all,ok:true};drawAcct()}
  catch(e){MYREC.id=null;MYRECWAIT=Date.now()+30000}}
 // community cleans: organiser records the group's result; everyone who RSVPed gets it on My stats
-function fillRecEv(){const s=$('crev'),w=$('crevwrap');if(!s||!w)return;const now=Date.now();
- const L=(acct?events.filter(e=>e.by===acct.id&&e.when<now&&e.when>now-30*864e5&&!(CLEANS||[]).some(x=>x.ev===e.id)):[]).sort((x,y)=>y.when-x.when);
- const cur=s.value;w.classList.toggle('hide',!L.length);
- s.innerHTML='<option value="">No – just my own clean</option>'+L.map(e=>`<option value="${esc(e.id)}">${esc(e.title)} – ${new Date(e.when).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</option>`).join('');
- if(L.some(e=>e.id===cur))s.value=cur}
+// ---- organiser only: record the result of their community clean (private form, opened from their own clean's card) ----
+var GR=null;   // {ev,h,m,b} while the organiser is filling this in
+function openGroupRecord(id){const ev=events.find(x=>x.id===id);if(!acct||!ev||ev.by!==acct.id)return;if(!GR||GR.ev!==id)GR={ev:id,h:0,m:30,b:1};
+ const n=REC.pts.length;
+ showModal(`<h2 id="gt" style="margin-top:0">Record “${esc(ev.title)}”</h2><p class="mute" style="margin-top:0">Only you, as the organiser, can do this. Everyone who RSVPed gets “community clean joined” on My stats, with the group’s total time and bags.</p>
+<label>Total time cleaning (the whole group)</label><div class="ir" style="grid-template-columns:1fr 1fr"><div><input id="gh" type="number" min="0" max="12" value="${GR.h}" inputmode="numeric" aria-label="Hours"><span class="mute">hours</span></div><div><input id="gm" type="number" min="0" max="59" value="${GR.m}" inputmode="numeric" aria-label="Minutes"><span class="mute">minutes</span></div></div>
+<label for="gb">Bin bags filled (the whole group)</label><input id="gb" type="number" min="0" max="500" value="${GR.b}" inputmode="numeric">
+<label>Area cleaned</label><div id="garea" class="mute">${n>=3?'Area highlighted: '+fmtArea(polyArea(REC.pts))+' ('+n+' points)':'Not highlighted yet.'}</div>
+<button class="s" id="gdraw" style="margin-top:6px">${n>=3?'Change the area':'Highlight the area on the map'}</button>
+<button class="p" id="ggo" style="width:100%">Save</button><div id="gmsg" class="mute" style="margin-top:6px"></div><button class="s" data-close id="gcancel" style="width:100%;margin-top:8px">Cancel</button>`);
+ $('modal').querySelector('.box').setAttribute('aria-labelledby','gt');
+ const keep=()=>{GR.h=Math.floor(+$('gh').value||0);GR.m=Math.floor(+$('gm').value||0);GR.b=Math.floor(+$('gb').value||0)};
+ $('gcancel').addEventListener('click',()=>{GR=null;REC={on:false,pts:[]};recUI();render()});
+ $('gdraw').onclick=()=>{keep();REC.on=true;if(REC.pts.length>=3)REC.pts=[];$('modal').classList.add('hide');$('t1').click();recUI();render();wrap.scrollIntoView({block:'center',behavior:'smooth'})};
+ $('ggo').onclick=async()=>{keep();const say=x=>{$('gmsg').textContent=x},min=GR.h*60+GR.m;
+  if(GR.h<0||GR.m<0||GR.m>59||GR.b<0)return say('Please check the time and bags – minutes go from 0 to 59.');
+  if(min<1)return say('Enter how long the group spent cleaning.');if(min>720)return say('That’s over 12 hours – please keep it to 12 hours or less.');if(GR.b>500)return say('Bags can be up to 500.');
+  if(REC.pts.length<3)return say('Highlight the area cleaned: tap “Highlight the area on the map”, tap around its edge, then Done.');
+  if(polyArea(REC.pts)>5e6)return say('That area is very big – please highlight just the part cleaned (up to 5 km²).');
+  if(!db)return say('Can’t save right now (not connected).');if(!cool('rec',30,$('gmsg')))return;
+  const rec={id:Date.now()+'_'+localId,user_id:acct.id,minutes:min,bags:GR.b,area:JSON.stringify(REC.pts.map(q=>[+q[0].toFixed(5),+q[1].toFixed(5)])),t:Date.now(),ev:ev.id,ev_title:String(ev.title||'').slice(0,100)};
+  $('ggo').disabled=true;say('Saving…');
+  try{await db.doc('clean_records/'+rec.id).set(rec);
+   if(MYREC.id===acct.id&&MYREC.ok){MYREC.minutes+=min;MYREC.bags+=rec.bags;MYREC.list.unshift(rec)}
+   if(!CLEANS.some(x=>x.id===rec.id))CLEANS.push(rec);MYJ.t=0;GR=null;REC={on:false,pts:[]};recUI();render();drawEv();drawAcct();
+   showModal(`<div style="text-align:center"><h2 style="margin-top:0">Recorded – thank you!</h2><p>${fmtDur(min)} and ${rec.bags} bag${rec.bags===1?'':'s'} from “${esc(ev.title)}”. Everyone who RSVPed now has it on their My stats.</p><button class="p" data-close style="width:100%">Done</button></div>`)}
+  catch(x){uncool('rec');$('ggo').disabled=false;say(/duplicate|unique|23505/i.test(x.message||'')?'This community clean has already been recorded.':/relation|does not exist|schema cache|clean_records|column/i.test(x.message||'')?'Recording community cleans needs a one-off database update first – tell Jo.':'Could not save: '+(x.message||'error'))}}}
 var MYJ={id:null,list:[],ok:false,t:0},MYJWAIT=0;
 async function loadMyJoined(){const id=acct&&acct.id;if(!sbReady()||!id||Date.now()<MYJWAIT||(MYJ.id===id&&Date.now()-MYJ.t<60000))return;MYJ.id=id;MYJ.t=Date.now();
  try{const mine=await sb.from('rsvps').select('ev').eq('by_user',id).limit(2000);if(mine.error)throw mine.error;
@@ -373,7 +395,7 @@ function drawEv(){const now=Date.now(),all=allEv().filter(e=>e.when>now-864e5||(
 async function cancelClean(id,ask=true){const ev=allEv().find(x=>x.id===id);if(!ev)return;
  if(ask&&!confirm(`Cancel "${ev.title}" for everyone? It will be removed from Upcoming cleans. This can't be undone.`))return;
  try{if(db&&!ev.demo)await db.doc('events/'+id).delete();events=events.filter(x=>x.id!==id);RS=RS.filter(r=>r.ev!==id);drawEv();$('emsg').textContent=`"${ev.title}" has been cancelled.`}catch(x){$('emsg').textContent='Could not cancel the clean: '+(x.message||'not allowed')}}
-$('evs').onclick=async e=>{if(e.target.dataset.recev){$('t1').click();const s=$('crev');if(s){fillRecEv();s.value=e.target.dataset.recev}$('reccard').scrollIntoView({block:'start',behavior:'smooth'});return}if(e.target.dataset.share)return shareClean(e.target.dataset.share);if(e.target.dataset.more){EVSHOW+=30;drawEv();return}if(e.target.dataset.cancel)return cancelClean(e.target.dataset.cancel);const id=e.target.dataset.id;if(!id)return;if(!acct){$('emsg').textContent='Sign in on the My stats tab to RSVP.';return}const ev=allEv().find(x=>x.id===id),me=myId(),going=rsvpOf(ev).includes(me),key='rsvps/'+id+'_'+me;
+$('evs').onclick=async e=>{if(e.target.dataset.recev)return openGroupRecord(e.target.dataset.recev);if(e.target.dataset.share)return shareClean(e.target.dataset.share);if(e.target.dataset.more){EVSHOW+=30;drawEv();return}if(e.target.dataset.cancel)return cancelClean(e.target.dataset.cancel);const id=e.target.dataset.id;if(!id)return;if(!acct){$('emsg').textContent='Sign in on the My stats tab to RSVP.';return}const ev=allEv().find(x=>x.id===id),me=myId(),going=rsvpOf(ev).includes(me),key='rsvps/'+id+'_'+me;
  if(!cool('rsvp_'+id,5,$('emsg')))return;
  if(going&&acct&&ev.by===acct.id&&confirm(`You organised "${ev.title}".\n\nDo you want to cancel the whole clean for everyone?\n\nOK – cancel the clean\nCancel – just remove your own RSVP`))return cancelClean(id,false);
  if(ev.demo||!db){ev.rsvp=going?rsvpOf(ev).filter(x=>x!==me):[...rsvpOf(ev),me];RS=RS.filter(x=>!(x.ev===id&&x.by===me));drawEv();return}
@@ -503,7 +525,7 @@ let NAMEMSG='';
 async function createAccount(name){needSb();name=(name||'').trim();if(!name)throw new Error('Pick a nickname first.');if(name.length>20)throw new Error('Nicknames can be up to 20 characters.');if(await nameTaken(name))throw new Error('That nickname is already taken – please choose another one.');const code=newCode(),email=await authEmail(code);const {data,error}=await sb.auth.signUp({email,password:code});if(error)throw new Error(/invalid|domain/i.test(error.message)?'Supabase rejected the placeholder email address – see README_SUPABASE.md, Troubleshooting.':error.message);if(!data.user||!data.session)throw new Error('Account creation needs "Confirm email" switched OFF in Supabase (Authentication > Providers > Email).');await finishAcct(name,code,true);showCode=true}
 async function signInAccount(name,code){needSb();const clean=fmt(code),raw=clean.replace(/-/g,'');if(!(raw.length===16&&[...raw].every(x=>AL.includes(x))&&chk(raw.slice(0,15))===raw[15]))throw new Error('That code doesn\'t look right – check for typos.');const email=await authEmail(clean);const {error}=await sb.auth.signInWithPassword({email,password:clean});if(error)throw error;const {data:ss}=await sb.auth.getSession();const {data:pp}=await sb.from('profiles').select('name').eq('id',ss.session.user.id).maybeSingle();await finishAcct(name||pp?.name||'Volunteer',clean,true);showCode=false}
 async function setAcct(name,code,save){if(!sb)return;try{const email=await authEmail(code);const {error}=await sb.auth.signInWithPassword({email,password:fmt(code)});if(error)throw error;await finishAcct(name,code,save)}catch(e){console.warn('Saved account could not be restored',e)}}
-function drawAcct(){drawAcctInner();fillRecEv();const el=$('acct');if(el&&NAMEMSG){el.insertAdjacentHTML('afterbegin',`<div class="card" style="border-color:var(--acc)">${esc(NAMEMSG)}</div>`);NAMEMSG=''}if(el&&acct&&isAdmin&&!$('slist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Strikes <span class="mute">(only admins can see this)</span></h2><p class="mute">When someone taps “Not actually cleaned”, it waits here for you. A strike is only given if you approve it. 5 approved strikes blocks the account.</p><div id="slist" class="mute">Loading…</div></div>');loadStrikes()}if(el&&acct&&isAdmin&&!$('avrlist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Reported characters <span class="mute">(only admins can see this)</span></h2><p class="mute">Tap Reset to wipe a drawing that isn’t appropriate (they can draw a new one), or Dismiss to ignore the reports.</p><div id="avrlist" class="mute">Loading…</div></div>');loadAvReports()}}
+function drawAcct(){drawAcctInner();const el=$('acct');if(el&&NAMEMSG){el.insertAdjacentHTML('afterbegin',`<div class="card" style="border-color:var(--acc)">${esc(NAMEMSG)}</div>`);NAMEMSG=''}if(el&&acct&&isAdmin&&!$('slist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Strikes <span class="mute">(only admins can see this)</span></h2><p class="mute">When someone taps “Not actually cleaned”, it waits here for you. A strike is only given if you approve it. 5 approved strikes blocks the account.</p><div id="slist" class="mute">Loading…</div></div>');loadStrikes()}if(el&&acct&&isAdmin&&!$('avrlist')){el.insertAdjacentHTML('beforeend','<div class="card"><h2>Reported characters <span class="mute">(only admins can see this)</span></h2><p class="mute">Tap Reset to wipe a drawing that isn’t appropriate (they can draw a new one), or Dismiss to ignore the reports.</p><div id="avrlist" class="mute">Loading…</div></div>');loadAvReports()}}
 function drawAcctInner(){const el=$('acct');if(!el)return;setTimeout(drawNotif);drawWho();if(acct){setTimeout(loadMyStill);setTimeout(loadMyAvatar);setTimeout(loadMyRecords);setTimeout(loadMyJoined)}
  if(!acct){el.innerHTML=`<div class="card"><h2>Create your account</h2><p>No email or password is required. Pick a nickname and you'll get a recovery code. The code is used as your account password behind the scenes.</p><label>Nickname</label><input id="anick" maxlength="20" placeholder="e.g. RiverRanger"><button class="p" data-a="create">Create account</button><div id="cmsg" class="mute" style="margin-top:6px"></div></div><div class="card"><h2>Already have a code?</h2><label>Recovery code</label><input id="acode" placeholder="XXXX-XXXX-XXXX-XXXX"><label>Nickname (optional)</label><input id="anick2" maxlength="20"><button class="p" data-a="signin">Sign in</button><div id="amsg" class="mute" style="margin-top:6px"></div></div>`;return}
  const id=acct.id,mine=reports.filter(r=>r.by===id).sort((a,b)=>b.t-a.t),done=reports.filter(r=>r.cleaned&&r.cleanedBy===id).length,still=MYSTILL.id===id?MYSTILL.n:'…',joined=allEv().filter(e=>rsvpOf(e).includes(id)).length;
@@ -653,10 +675,10 @@ function makeAssets(client){return{async upload(blob,reportId){const me=(sbUser&
  // map only needs open spots, spots cleaned in the last 2 weeks, and the signed-in person's own reports/cleans
  const repFilter=q=>{const me=sbUser&&sbUser.id,c=['cleaned.eq.false','cleaned_t.gt.'+(Date.now()-14*864e5)];if(me)c.push('by_user.eq.'+me,'cleaned_by.eq.'+me);return q.or(c.join(','))};
  REPSUB=db.collection('reports').onSnapshot(q=>{real=q.docs.map(d=>d.data()).filter(validRep);render();drawPop()},{filter:repFilter});
- db.collection('events').onSnapshot(q=>{events=q.docs.map(d=>d.data());drawEv();fillRecEv();loadDetailsSoon()},{filter:q=>q.gt('when',Date.now()-30*864e5)});
+ db.collection('events').onSnapshot(q=>{events=q.docs.map(d=>d.data());drawEv();loadDetailsSoon()},{filter:q=>q.gt('when',Date.now()-30*864e5)});
  db.collection('news').onSnapshot(q=>{POSTS=q.docs.map(d=>d.data());drawStories()},{order:'t',limit:60});
  db.collection('donations').onSnapshot(q=>{DONS=q.docs.map(d=>d.data());drawRaised()});
- db.collection('clean_records').onSnapshot(q=>{CLEANS=q.docs.map(d=>d.data());render();fillRecEv();drawEv()},{filter:q=>q.gt('t',Date.now()-90*864e5),order:'t',limit:400});  // cleaned areas from the last 90 days
+ db.collection('clean_records').onSnapshot(q=>{CLEANS=q.docs.map(d=>d.data());render();drawEv()},{filter:q=>q.gt('t',Date.now()-90*864e5),order:'t',limit:400});  // cleaned areas from the last 90 days
  loadVolunteers();setInterval(loadVolunteers,60000);
  loadNewMembers();setInterval(loadNewMembers,120000);
  loadNotices();try{sb.channel('jsn-notices').on('postgres_changes',{event:'*',schema:'public',table:'notices'},()=>loadNotices()).subscribe()}catch(e){}
